@@ -276,9 +276,14 @@ POST /private-elections/prepare
 
 생성 플로우 관점의 기본 전이:
 
-- `PREPARED -> ONCHAIN_PENDING -> ACTIVE`
+- `PREPARED -> ACTIVE`
 - 생성되지 않으면 `PREPARED -> EXPIRED`
-- 실패하면 `ONCHAIN_PENDING -> FAILED`
+- 실패하면 `PREPARED -> FAILED`
+
+비고:
+
+- `ONCHAIN_PENDING` enum은 남겨두지만, 현재 구현에서는 프론트 confirm API가 없으므로 일반적으로 별도 기록하지 않는다.
+- on-chain 생성이 감지되면 인덱서가 바로 `ACTIVE` 또는 이후 상태로 갱신한다.
 
 ## 5. 프론트 구현 예시
 

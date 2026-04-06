@@ -61,7 +61,9 @@ INDEXER_RPC_URL="http://127.0.0.1:8545"
 역할:
 
 - `ElectionCreated` 이벤트 polling
+- `EncryptedVoteSubmitted` 이벤트 polling
 - election contract `view` 호출
+- submission tx / block 조회
 
 ### `INDEXER_FACTORY_ADDRESS`
 
@@ -69,7 +71,7 @@ INDEXER_RPC_URL="http://127.0.0.1:8545"
 
 역할:
 
-- `ElectionCreated` 이벤트를 읽는 기준 주소
+- `ElectionCreated` 이벤트를 읽는 기준 factory 주소
 
 ### `INDEXER_START_BLOCK`
 
@@ -95,7 +97,7 @@ INDEXER_RPC_URL="http://127.0.0.1:8545"
 역할:
 
 - `PREPARED` 상태 election이 남아 있을 때 최근 블록 구간을 재조회
-- 일시적 다운타임이나 재시작으로 놓친 `ElectionCreated` 이벤트 복구 보조
+- 일시적 다운타임이나 재시작으로 놓친 `ElectionCreated` / `EncryptedVoteSubmitted` 이벤트 복구 보조
 
 ## 요약
 

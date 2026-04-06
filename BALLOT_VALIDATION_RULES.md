@@ -74,10 +74,14 @@
 ### 2. Election 귀속 규칙
 
 - `electionId`는 대상 election과 일치해야 한다.
-- `chainId`는 트랜잭션이 제출된 체인과 일치해야 한다.
 - `electionAddress`는 투표를 받은 election contract 주소와 일치해야 한다.
 
 이 규칙은 다른 election 또는 다른 chain으로의 replay를 막기 위한 것이다.
+
+주의:
+
+- payload에는 `chainId`를 포함하지만, 현재 백엔드 구현은 별도 chainId 대조까지는 수행하지 않는다.
+- 현재 실제 검증은 `electionId`, `electionAddress`, `voterAddress`, 후보/정책 규칙 기준으로 이뤄진다.
 
 ### 3. Voter 귀속 규칙
 
@@ -197,7 +201,6 @@ invalid ballot은 다음을 만족해야 한다.
 - `DECRYPTION_FAILED`
 - `UNSUPPORTED_SCHEMA_VERSION`
 - `ELECTION_ID_MISMATCH`
-- `CHAIN_ID_MISMATCH`
 - `ELECTION_ADDRESS_MISMATCH`
 - `VOTER_ADDRESS_MISMATCH`
 - `EMPTY_SELECTION`
