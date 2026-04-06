@@ -1,0 +1,16 @@
+-- AlterTable
+ALTER TABLE "elections" ALTER COLUMN "organizer_wallet_address" DROP NOT NULL,
+ALTER COLUMN "organizer_verified_snapshot" DROP NOT NULL,
+ALTER COLUMN "organizer_verified_snapshot" DROP DEFAULT,
+ALTER COLUMN "visibility_mode" SET DEFAULT 'PRIVATE',
+ALTER COLUMN "payment_mode" DROP NOT NULL,
+ALTER COLUMN "ballot_policy" DROP NOT NULL,
+ALTER COLUMN "start_at" DROP NOT NULL,
+ALTER COLUMN "end_at" DROP NOT NULL,
+ALTER COLUMN "result_reveal_at" DROP NOT NULL,
+ALTER COLUMN "min_karma_tier" DROP NOT NULL,
+ALTER COLUMN "reset_interval_seconds" DROP NOT NULL,
+ALTER COLUMN "allow_multiple_choice" DROP NOT NULL,
+ALTER COLUMN "max_selections_per_submission" DROP NOT NULL,
+ALTER COLUMN "timezone_window_offset" DROP NOT NULL,
+ALTER COLUMN "cost_per_ballot" DROP NOT NULL;

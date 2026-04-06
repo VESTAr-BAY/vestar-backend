@@ -1,0 +1,232 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum VerifiedOrganizerStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum PrivateElectionState {
+  PREPARED
+  ONCHAIN_PENDING
+  ACTIVE
+  FINALIZED
+  CANCELLED
+  EXPIRED
+  FAILED
+}
+
+enum VisibilityMode {
+  OPEN
+  PRIVATE
+}
+
+enum PaymentMode {
+  FREE
+  PAID
+}
+
+enum BallotPolicy {
+  ONE_PER_ELECTION
+  ONE_PER_INTERVAL
+  UNLIMITED_PAID
+}
+
+model AdminUser {
+  id                 BigInt              @id @default(autoincrement())
+  email              String              @unique
+  passwordHash       String              @map("password_hash")
+  role               String
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  verifiedOrganizers VerifiedOrganizer[]
+
+  @@map("admin_users")
+}
+
+model VerifiedOrganizer {
+  id              BigInt                  @id @default(autoincrement())
+  walletAddress   String                  @unique @map("wallet_address")
+  status          VerifiedOrganizerStatus
+  rejectionReason String?                 @map("rejection_reason")
+  verifiedBy      BigInt?                 @map("verified_by")
+  verifiedAt      DateTime?               @map("verified_at")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
+  adminUser       AdminUser?              @relation(fields: [verifiedBy], references: [id])
+
+  @@map("verified_organizers")
+}
+
+model ElectionGroup {
+  id              BigInt     @id @default(autoincrement())
+  groupKey        String     @unique @map("group_key")
+  onchainSeriesId String?    @unique @map("onchain_series_id")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+  elections       Election[]
+
+  @@map("election_groups")
+}
+
+model Election {
+  id                         BigInt               @id @default(autoincrement())
+  groupId                    BigInt               @map("group_id")
+  onchainElectionId          String?              @unique @map("onchain_election_id")
+  onchainElectionAddress     String?              @unique @map("onchain_election_address")
+  title                      String
+  candidateManifestPreimage  Json                 @map("candidate_manifest_preimage")
+  organizerWalletAddress     String?              @map("organizer_wallet_address")
+  organizerVerifiedSnapshot  Boolean?             @map("organizer_verified_snapshot")
+  visibilityMode             VisibilityMode       @default(PRIVATE) @map("visibility_mode")
+  paymentMode                PaymentMode?         @map("payment_mode")
+  ballotPolicy               BallotPolicy?        @map("ballot_policy")
+  startAt                    DateTime?            @map("start_at")
+  endAt                      DateTime?            @map("end_at")
+  resultRevealAt             DateTime?            @map("result_reveal_at")
+  minKarmaTier               Int?                 @map("min_karma_tier")
+  resetIntervalSeconds       Int?                 @map("reset_interval_seconds")
+  allowMultipleChoice        Boolean?             @map("allow_multiple_choice")
+  maxSelectionsPerSubmission Int?                 @map("max_selections_per_submission")
+  timezoneWindowOffset       Int?                 @map("timezone_window_offset")
+  paymentToken               String?              @map("payment_token")
+  costPerBallot              String?              @map("cost_per_ballot")
+  state                      PrivateElectionState
+  createdAt                  DateTime             @default(now()) @map("created_at")
+  updatedAt                  DateTime             @updatedAt @map("updated_at")
+  group                      ElectionGroup        @relation(fields: [groupId], references: [id])
+  electionKey                ElectionKey?
+  electionCandidates         ElectionCandidate[]
+  voteSubmissions            VoteSubmission[]
+  liveTally                  LiveTally[]
+  finalizedTally             FinalizedTally[]
+  resultSummary              ResultSummary?
+
+  @@index([groupId])
+  @@map("elections")
+}
+
+model ElectionKey {
+  id                       BigInt    @id @default(autoincrement())
+  electionId               BigInt?   @unique @map("election_id")
+  publicKey                String    @map("public_key")
+  privateKeyCommitmentHash String    @unique @map("private_key_commitment_hash")
+  privateKeyEncrypted      String    @map("private_key_encrypted")
+  isRevealed               Boolean   @default(false) @map("is_revealed")
+  revealedAt               DateTime? @map("revealed_at")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+  election                 Election? @relation(fields: [electionId], references: [id])
+
+  @@map("election_keys")
+}
+
+model ElectionCandidate {
+  id           BigInt   @id @default(autoincrement())
+  electionId   BigInt   @map("election_id")
+  candidateKey String   @map("candidate_key")
+  displayOrder Int      @map("display_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+  election     Election @relation(fields: [electionId], references: [id])
+
+  @@unique([electionId, candidateKey])
+  @@index([electionId, displayOrder])
+  @@map("election_candidates")
+}
+
+model VoteSubmission {
+  id              BigInt           @id @default(autoincrement())
+  electionId      BigInt           @map("election_id")
+  onchainTxHash   String           @unique @map("onchain_tx_hash")
+  voterAddress    String           @map("voter_address")
+  blockNumber     Int              @map("block_number")
+  blockTimestamp  DateTime         @map("block_timestamp")
+  encryptedBallot String           @map("encrypted_ballot")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  election        Election         @relation(fields: [electionId], references: [id])
+  decryptedBallot DecryptedBallot?
+  invalidBallots  InvalidBallot[]
+
+  @@index([electionId, blockNumber])
+  @@index([voterAddress])
+  @@map("vote_submissions")
+}
+
+model DecryptedBallot {
+  id               BigInt         @id @default(autoincrement())
+  voteSubmissionId BigInt         @unique @map("vote_submission_id")
+  candidateKeys    Json           @map("candidate_keys")
+  nonce            String
+  isValid          Boolean        @map("is_valid")
+  validatedAt      DateTime?      @map("validated_at")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  voteSubmission   VoteSubmission @relation(fields: [voteSubmissionId], references: [id])
+
+  @@index([isValid])
+  @@map("decrypted_ballots")
+}
+
+model InvalidBallot {
+  id               BigInt         @id @default(autoincrement())
+  voteSubmissionId BigInt         @map("vote_submission_id")
+  reasonCode       String         @map("reason_code")
+  reasonDetail     String?        @map("reason_detail")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  voteSubmission   VoteSubmission @relation(fields: [voteSubmissionId], references: [id])
+
+  @@index([voteSubmissionId])
+  @@index([reasonCode])
+  @@map("invalid_ballots")
+}
+
+model LiveTally {
+  id           BigInt   @id @default(autoincrement())
+  electionId   BigInt   @map("election_id")
+  candidateKey String   @map("candidate_key")
+  count        Int
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  election     Election @relation(fields: [electionId], references: [id])
+
+  @@unique([electionId, candidateKey])
+  @@map("live_tally")
+}
+
+model FinalizedTally {
+  id           BigInt   @id @default(autoincrement())
+  electionId   BigInt   @map("election_id")
+  candidateKey String   @map("candidate_key")
+  count        Int
+  voteRatio    Float    @map("vote_ratio")
+  finalizedAt  DateTime @map("finalized_at")
+  election     Election @relation(fields: [electionId], references: [id])
+
+  @@unique([electionId, candidateKey])
+  @@map("finalized_tally")
+}
+
+model ResultSummary {
+  id                    BigInt   @id @default(autoincrement())
+  electionId            BigInt   @unique @map("election_id")
+  totalSubmissions      Int      @map("total_submissions")
+  totalDecryptedBallots Int      @map("total_decrypted_ballots")
+  totalValidVotes       Int      @map("total_valid_votes")
+  totalInvalidVotes     Int      @map("total_invalid_votes")
+  createdAt             DateTime @default(now()) @map("created_at")
+  election              Election @relation(fields: [electionId], references: [id])
+
+  @@map("result_summaries")
+}
+
+model IndexerCursor {
+  key          String   @id
+  blockNumber  String   @map("block_number")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("indexer_cursors")
+}
