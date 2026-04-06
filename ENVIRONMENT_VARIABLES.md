@@ -14,7 +14,7 @@
 - 예:
 
 ```env
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/vestar_backend?schema=public"
+DATABASE_URL="postgresql://your_db_user:your_db_password@localhost:5432/your_db_name?schema=public"
 ```
 
 역할:
@@ -55,7 +55,7 @@ APP_PORT=3000
 - 예:
 
 ```env
-INDEXER_RPC_URL="http://127.0.0.1:8545"
+INDEXER_RPC_URL="https://your-rpc.example.com"
 ```
 
 역할:
