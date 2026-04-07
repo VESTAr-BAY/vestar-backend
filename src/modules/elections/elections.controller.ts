@@ -13,6 +13,15 @@ import { ElectionsService } from './elections.service';
 export class ElectionsController {
   constructor(private readonly electionsService: ElectionsService) {}
 
+  @Get('revealed-private-key')
+  getRevealedPrivateKey(
+    @Query('onchainElectionId') onchainElectionId: string,
+  ) {
+    return this.electionsService.getRevealedPrivateKeyByOnchainElectionId(
+      onchainElectionId,
+    );
+  }
+
   @Get()
   findAll(
     @Query('seriesId') seriesId?: string,

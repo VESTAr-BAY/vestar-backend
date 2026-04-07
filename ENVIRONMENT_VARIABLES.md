@@ -106,6 +106,24 @@ INDEXER_START_BLOCK="18825000"
 - `PREPARED` 상태 election이 남아 있을 때 최근 블록 구간을 재조회
 - 일시적 다운타임이나 재시작으로 놓친 `ElectionCreated` / `EncryptedVoteSubmitted` 이벤트 복구 보조
 
+## Key Reveal Worker 환경변수
+
+### `KEY_REVEAL_WORKER_PRIVATE_KEY`
+
+- `revealPrivateKey(bytes)`를 호출할 운영 지갑의 private key
+
+역할:
+
+- `KEY_REVEAL_PENDING` 상태가 된 private election을 감지하면
+- 백엔드가 DB의 `private_key_encrypted`를 복호화한 뒤
+- 이 지갑으로 온체인 `revealPrivateKey(...)` 트랜잭션을 전송
+
+주의:
+
+- 보통은 `platformAdmin` 지갑을 그대로 넣는 방식이 가장 단순하다
+- `platformAdmin`이 아니라면 해당 election 컨트랙트에서 `isRevealManager(address)`가 `true`인 계정이어야 한다
+- 유출 시 on-chain write 권한이 탈취될 수 있으므로 운영 비밀값으로 관리해야 한다
+
 ## 요약
 
 - `DATABASE_URL`
@@ -124,3 +142,5 @@ INDEXER_START_BLOCK="18825000"
   - 인덱서 polling 주기
 - `INDEXER_RECONCILE_LOOKBACK_BLOCKS`
   - 최근 블록 재스캔 범위
+- `KEY_REVEAL_WORKER_PRIVATE_KEY`
+  - key reveal 트랜잭션 서명용 운영 지갑 키

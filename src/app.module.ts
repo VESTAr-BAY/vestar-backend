@@ -8,6 +8,7 @@ import { ElectionsModule } from './modules/elections/elections.module';
 import { FinalizedTallyModule } from './modules/finalized-tally/finalized-tally.module';
 import { IndexerModule } from './modules/indexer/indexer.module';
 import { InvalidBallotsModule } from './modules/invalid-ballots/invalid-ballots.module';
+import { KeyRevealWorkerModule } from './modules/key-reveal-worker/key-reveal-worker.module';
 import { LiveTallyModule } from './modules/live-tally/live-tally.module';
 import { PrivateElectionsModule } from './modules/private-elections/private-elections.module';
 import { ResultSummariesModule } from './modules/result-summaries/result-summaries.module';
@@ -29,6 +30,7 @@ import { PrismaModule } from './prisma/prisma.module';
     VoteSubmissionsModule,
     DecryptedBallotsModule,
     InvalidBallotsModule,
+    KeyRevealWorkerModule,
     LiveTallyModule,
     FinalizedTallyModule,
     ResultSummariesModule,

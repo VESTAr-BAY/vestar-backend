@@ -6,7 +6,8 @@ import {
   Prisma,
   VisibilityMode,
 } from '@prisma/client';
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { createDecipheriv, createHash } from 'node:crypto';
 import { toOptionalBigInt } from '../../common/utils/query.utils';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -165,6 +166,44 @@ export class ElectionsService {
     return this.serializeOnchainElection(election);
   }
 
+  async getRevealedPrivateKeyByOnchainElectionId(onchainElectionId: string) {
+    const election = await this.prisma.onchainElection.findUnique({
+      where: { onchainElectionId },
+      include: {
+        draft: {
+          include: {
+            electionKey: true,
+          },
+        },
+      },
+    });
+
+    if (!election) {
+      throw new NotFoundException('Election not found');
+    }
+
+    if (!election.draft?.electionKey) {
+      throw new NotFoundException('Election key not found');
+    }
+
+    if (new Date() < election.resultRevealAt) {
+      throw new ForbiddenException('Private key is not revealed yet');
+    }
+
+    const privateKey = this.decryptPrivateKey(
+      election.draft.electionKey.privateKeyEncrypted,
+    );
+
+    return {
+      onchainElectionId: election.onchainElectionId,
+      onchainElectionAddress: election.onchainElectionAddress,
+      resultRevealAt: election.resultRevealAt,
+      privateKey,
+      privateKeyCommitmentHash:
+        election.draft.electionKey.privateKeyCommitmentHash,
+    };
+  }
+
   create(data: CreateElectionDto) {
     const createInput: Prisma.OnchainElectionUncheckedCreateInput = {
       draftId:
@@ -230,5 +269,41 @@ export class ElectionsService {
       where: { id },
       data: updateInput,
     });
+  }
+
+  private decryptPrivateKey(privateKeyEncrypted: string) {
+    const secret = process.env.PRIVATE_KEY_ENCRYPTION_SECRET;
+
+    if (!secret) {
+      throw new Error('PRIVATE_KEY_ENCRYPTION_SECRET is required');
+    }
+
+    const envelope = JSON.parse(privateKeyEncrypted) as {
+      algorithm: string;
+      iv: string;
+      authTag: string;
+      ciphertext: string;
+    };
+
+    if (envelope.algorithm !== 'aes-256-gcm') {
+      throw new Error(
+        `Unsupported private key envelope algorithm ${envelope.algorithm}`,
+      );
+    }
+
+    const key = createHash('sha256').update(secret).digest();
+    const decipher = createDecipheriv(
+      'aes-256-gcm',
+      key,
+      Buffer.from(envelope.iv, 'base64'),
+    );
+    decipher.setAuthTag(Buffer.from(envelope.authTag, 'base64'));
+
+    const decrypted = Buffer.concat([
+      decipher.update(Buffer.from(envelope.ciphertext, 'base64')),
+      decipher.final(),
+    ]);
+
+    return decrypted.toString('utf8');
   }
 }
