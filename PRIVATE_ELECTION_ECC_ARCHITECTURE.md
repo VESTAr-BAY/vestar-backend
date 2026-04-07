@@ -38,6 +38,38 @@ flowchart LR
 
 즉 현재 구조는 `ECC로 직접 메시지를 복호화`하는 구조가 아니라, `ECC는 공유 비밀 재생성`, `실제 메시지 암복호화는 AES-GCM`이 담당한다.
 
+추가로 중요한 점은, 이 구조에서 나중에 검증자가 다시 복호화할 때 필요한 재료가 이미 온체인과 DB에 나뉘어 존재한다는 점이다.
+
+- 온체인에 공개되는 것
+  - `submitEncryptedVote(bytes encryptedBallot)`의 tx input 안의 `encryptedBallot`
+  - 이 `encryptedBallot` 안에는 envelope 전체가 들어 있다
+  - 즉 `ephemeralPublicKey`, `iv`, `authTag`, `ciphertext`는 결국 온체인 tx input으로 공개된다
+- DB에 저장되는 것
+  - 백엔드는 tx input에서 추출한 `encryptedBallot`를 `vote_submissions.encrypted_ballot`에도 저장한다
+  - 따라서 검증/집계 파이프라인은 DB에서 다시 읽기 쉽다
+- reveal 시점에 새로 공개되는 것
+  - `revealedPrivateKey()`를 통해 election private key만 온체인에 공개된다
+
+즉 검증 시점에 필요한 퍼즐 조각은 다음처럼 맞춰진다.
+
+```mermaid
+flowchart LR
+  A[submitEncryptedVote tx input] --> B[encryptedBallot envelope]
+  B --> C[ephemeralPublicKey]
+  B --> D[iv]
+  B --> E[authTag]
+  B --> F[ciphertext]
+  G[revealedPrivateKey onchain] --> H[ECDH shared secret 재생성]
+  C --> H
+  H --> I[AES-GCM 복호화]
+  D --> I
+  E --> I
+  F --> I
+```
+
+따라서 나중에 검증자가 해야 하는 일은 `온체인에서 private key만 새로 얻고`, 기존에 이미 온체인 tx input에 공개되어 있던 envelope를 다시 찾아 복호화하는 것이다.  
+즉 reveal 시점에 envelope를 새로 공개하는 것이 아니라, **원래 제출 때부터 envelope는 온체인 tx input으로 공개되어 있고, reveal 시점에는 그걸 풀 수 있는 private key만 공개된다.**
+
 ### 1.3 왜 이렇게 했는가
 
 - 온체인에 저장하는 공개키 크기를 줄이기 위해
