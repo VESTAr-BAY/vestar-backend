@@ -22,6 +22,23 @@ export class ElectionsController {
     );
   }
 
+  @Get('meta')
+  findMetadata(
+    @Query('seriesId') seriesId?: string,
+    @Query('onchainElectionId') onchainElectionId?: string,
+    @Query('onchainElectionAddress') onchainElectionAddress?: string,
+    @Query('syncState') syncState?: ElectionSyncState,
+    @Query('visibilityMode') visibilityMode?: VisibilityMode,
+  ) {
+    return this.electionsService.findMetadata({
+      seriesId,
+      onchainElectionId,
+      onchainElectionAddress,
+      syncState,
+      visibilityMode,
+    });
+  }
+
   @Get()
   findAll(
     @Query('seriesId') seriesId?: string,

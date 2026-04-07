@@ -39,6 +39,30 @@ type UpdateElectionDto = Partial<CreateElectionDto>;
 export class ElectionsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private serializeElectionMetadata(onchainElection: any) {
+    if (!onchainElection) {
+      return onchainElection;
+    }
+
+    const draft = onchainElection.draft;
+
+    return {
+      id: onchainElection.id,
+      draftId: onchainElection.draftId,
+      onchainElectionId: onchainElection.onchainElectionId,
+      onchainElectionAddress: onchainElection.onchainElectionAddress,
+      title: draft?.title ?? null,
+      coverImageUrl: draft?.coverImageUrl ?? null,
+      series: draft?.series ?? null,
+      electionKey: draft?.electionKey
+        ? {
+            publicKey: draft.electionKey.publicKey,
+          }
+        : null,
+      electionCandidates: draft?.electionCandidates ?? [],
+    };
+  }
+
   private serializeOnchainElection(onchainElection: any) {
     if (!onchainElection) {
       return onchainElection;
@@ -137,6 +161,50 @@ export class ElectionsService {
     });
 
     return elections.map((election) => this.serializeOnchainElection(election));
+  }
+
+  async findMetadata(query: {
+    seriesId?: string;
+    onchainElectionId?: string;
+    onchainElectionAddress?: string;
+    syncState?: ElectionSyncState;
+    visibilityMode?: VisibilityMode;
+  }) {
+    const elections = await this.prisma.onchainElection.findMany({
+      where: {
+        onchainElectionId: query.onchainElectionId,
+        onchainElectionAddress: query.onchainElectionAddress,
+        visibilityMode: query.visibilityMode,
+        ...(query.syncState || query.seriesId
+          ? {
+              draft: {
+                ...(query.seriesId
+                  ? { seriesId: toOptionalBigInt(query.seriesId) }
+                  : {}),
+                ...(query.syncState ? { syncState: query.syncState } : {}),
+              },
+            }
+          : {}),
+      },
+      orderBy: { id: 'asc' },
+      include: {
+        draft: {
+          include: {
+            series: true,
+            electionKey: {
+              select: {
+                publicKey: true,
+              },
+            },
+            electionCandidates: {
+              orderBy: { displayOrder: 'asc' },
+            },
+          },
+        },
+      },
+    });
+
+    return elections.map((election) => this.serializeElectionMetadata(election));
   }
 
   async findOne(id: bigint) {
