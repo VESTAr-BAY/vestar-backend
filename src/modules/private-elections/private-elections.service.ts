@@ -1,13 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import {
+  ElectionSyncState,
   Prisma,
-  PrivateElectionState,
   VisibilityMode,
 } from '@prisma/client';
 import {
   createCipheriv,
   createHash,
-  createPrivateKey,
   generateKeyPairSync,
   randomBytes,
 } from 'node:crypto';
@@ -17,11 +16,19 @@ import { PrismaService } from '../../prisma/prisma.service';
 type CandidateInput = {
   candidateKey: string;
   displayOrder: number;
+  imageUrl?: string | null;
+};
+
+type CandidateManifestHashInput = {
+  candidateKey: string;
+  displayOrder: number;
 };
 
 type PreparePrivateElectionDto = {
-  groupKey: string;
+  seriesKey: string;
+  seriesCoverImageUrl?: string | null;
   title: string;
+  coverImageUrl?: string | null;
   candidateManifestPreimage: {
     candidates: CandidateInput[];
   };
@@ -34,45 +41,71 @@ export class PrivateElectionsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async prepare(data: PreparePrivateElectionDto) {
-    const normalizedManifest = this.normalizeCandidateManifest(
+    const normalizedCandidates = this.normalizeCandidatesForStorage(
       data.candidateManifestPreimage,
     );
-    const seriesIdHash = this.hashString(data.groupKey);
+    const normalizedManifest = this.normalizeCandidateManifestForHash(
+      data.candidateManifestPreimage,
+    );
+    const seriesIdHash = this.hashString(data.seriesKey);
     const titleHash = this.hashString(data.title);
     const candidateManifestHash = this.hashJson(normalizedManifest);
     const { publicKeyPem, privateKeyPem } = this.generateKeyPair();
     const privateKeyCommitmentHash = this.hashString(privateKeyPem);
     const privateKeyEncrypted = this.encryptPrivateKey(privateKeyPem);
 
-    const election = await this.prisma.$transaction(async (tx) => {
-      const group = await tx.electionGroup.upsert({
-        where: { groupKey: data.groupKey },
-        create: { groupKey: data.groupKey },
-        update: {},
+    await this.prisma.$transaction(async (tx) => {
+      await tx.electionSeries.createMany({
+        data: [
+          {
+            seriesKey: data.seriesKey,
+            coverImageUrl: data.seriesCoverImageUrl ?? null,
+          },
+        ],
+        skipDuplicates: true,
       });
 
-      const createdElection = await tx.election.create({
+      const series = await tx.electionSeries.findUnique({
+        where: { seriesKey: data.seriesKey },
+      });
+
+      if (!series) {
+        throw new Error(`Failed to resolve election series for key: ${data.seriesKey}`);
+      }
+
+      if (data.seriesCoverImageUrl !== undefined) {
+        await tx.electionSeries.update({
+          where: { id: series.id },
+          data: {
+            coverImageUrl: data.seriesCoverImageUrl ?? null,
+          },
+        });
+      }
+
+      const createdDraft = await tx.electionDraft.create({
         data: {
-          groupId: group.id,
+          seriesId: series.id,
           title: data.title,
+          coverImageUrl: data.coverImageUrl ?? null,
           candidateManifestPreimage:
             normalizedManifest as Prisma.InputJsonValue,
           visibilityMode: VisibilityMode.PRIVATE,
-          state: PrivateElectionState.PREPARED,
+          syncState: ElectionSyncState.PREPARED,
         },
       });
 
       await tx.electionCandidate.createMany({
-        data: normalizedManifest.candidates.map((candidate) => ({
-          electionId: createdElection.id,
+        data: normalizedCandidates.candidates.map((candidate) => ({
+          draftId: createdDraft.id,
           candidateKey: candidate.candidateKey,
+          imageUrl: candidate.imageUrl ?? null,
           displayOrder: candidate.displayOrder,
         })),
       });
 
       await tx.electionKey.create({
         data: {
-          electionId: createdElection.id,
+          draftId: createdDraft.id,
           publicKey: publicKeyPem,
           privateKeyCommitmentHash,
           privateKeyEncrypted,
@@ -80,27 +113,43 @@ export class PrivateElectionsService {
         },
       });
 
-      return createdElection;
     });
 
     return {
-      electionId: election.id.toString(),
-      visibilityMode: VisibilityMode.PRIVATE,
-      state: election.state,
       seriesIdHash,
       titleHash,
       candidateManifestHash,
       keySchemeVersion: PRIVATE_ELECTION_KEY_SCHEME_VERSION,
-      publicKey: publicKeyPem,
+      publicKey: {
+        format: 'pem',
+        algorithm: 'ECDH-P256',
+        value: publicKeyPem,
+      },
       privateKeyCommitmentHash,
       candidateManifestPreimage: normalizedManifest,
     };
   }
 
-  private normalizeCandidateManifest(manifest: {
+  private normalizeCandidatesForStorage(manifest: {
     candidates: CandidateInput[];
   }): {
     candidates: CandidateInput[];
+  } {
+    return {
+      candidates: [...manifest.candidates]
+        .map((candidate) => ({
+          candidateKey: candidate.candidateKey,
+          displayOrder: candidate.displayOrder,
+          imageUrl: candidate.imageUrl ?? null,
+        }))
+        .sort((a, b) => a.displayOrder - b.displayOrder),
+    };
+  }
+
+  private normalizeCandidateManifestForHash(manifest: {
+    candidates: CandidateInput[];
+  }): {
+    candidates: CandidateManifestHashInput[];
   } {
     return {
       candidates: [...manifest.candidates]
@@ -113,8 +162,8 @@ export class PrivateElectionsService {
   }
 
   private generateKeyPair() {
-    const { publicKey, privateKey } = generateKeyPairSync('rsa', {
-      modulusLength: 2048,
+    const { publicKey, privateKey } = generateKeyPairSync('ec', {
+      namedCurve: 'prime256v1',
       publicKeyEncoding: {
         type: 'spki',
         format: 'pem',
@@ -125,16 +174,9 @@ export class PrivateElectionsService {
       },
     });
 
-    const privateKeyPem = createPrivateKey(privateKey)
-      .export({
-        type: 'pkcs8',
-        format: 'pem',
-      })
-      .toString();
-
     return {
       publicKeyPem: publicKey.toString(),
-      privateKeyPem,
+      privateKeyPem: privateKey.toString(),
     };
   }
 

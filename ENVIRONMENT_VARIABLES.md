@@ -27,7 +27,7 @@ DATABASE_URL="postgresql://your_db_user:your_db_password@localhost:5432/your_db_
 
 현재 사용 방식:
 
-- 백엔드는 RSA 공개키/개인키 쌍을 생성한다
+- 백엔드는 P-256 공개키/개인키 쌍을 생성한다
 - private key PEM은 평문으로 저장하지 않는다
 - 이 환경변수를 바탕으로 AES-256-GCM 키를 파생해 `private_key_encrypted`로 저장한다
 
@@ -77,10 +77,17 @@ INDEXER_RPC_URL="https://your-rpc.example.com"
 
 - 인덱서가 처음 시작할 때 읽기 시작할 기본 블록 번호
 - 이미 저장된 인덱서 커서가 있으면 그 값이 우선한다
+- 로컬 개발에서는 현재 테스트를 시작한 최근 블록으로 올려두는 편이 좋다
 
 역할:
 
 - 첫 실행 시 초기 fromBlock 기준값
+
+예시:
+
+```env
+INDEXER_START_BLOCK="18825000"
+```
 
 ### `INDEXER_POLL_INTERVAL_MS`
 

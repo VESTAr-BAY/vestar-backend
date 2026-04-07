@@ -20,7 +20,7 @@ export class VoteSubmissionsService {
   findAll(query: { electionId?: string; voterAddress?: string }) {
     return this.prisma.voteSubmission.findMany({
       where: {
-        electionId: toOptionalBigInt(query.electionId),
+        onchainElectionId: toOptionalBigInt(query.electionId),
         voterAddress: query.voterAddress,
       },
       orderBy: [{ blockNumber: 'desc' }, { id: 'desc' }],
@@ -31,6 +31,56 @@ export class VoteSubmissionsService {
     return this.prisma.voteSubmission.findUnique({
       where: { id },
       include: {
+        onchainElection: {
+          select: {
+            id: true,
+            onchainElectionId: true,
+            onchainElectionAddress: true,
+            onchainState: true,
+            draft: {
+              select: {
+                id: true,
+                title: true,
+                series: {
+                  select: {
+                    id: true,
+                    seriesKey: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        decryptedBallot: true,
+        invalidBallots: true,
+      },
+    });
+  }
+
+  findByTxHash(onchainTxHash: string) {
+    return this.prisma.voteSubmission.findUnique({
+      where: { onchainTxHash: onchainTxHash.toLowerCase() },
+      include: {
+        onchainElection: {
+          select: {
+            id: true,
+            onchainElectionId: true,
+            onchainElectionAddress: true,
+            onchainState: true,
+            draft: {
+              select: {
+                id: true,
+                title: true,
+                series: {
+                  select: {
+                    id: true,
+                    seriesKey: true,
+                  },
+                },
+              },
+            },
+          },
+        },
         decryptedBallot: true,
         invalidBallots: true,
       },
@@ -40,8 +90,8 @@ export class VoteSubmissionsService {
   create(data: CreateVoteSubmissionDto) {
     return this.prisma.voteSubmission.create({
       data: {
-        electionId: BigInt(data.electionId),
-        onchainTxHash: data.onchainTxHash,
+        onchainElectionId: BigInt(data.electionId),
+        onchainTxHash: data.onchainTxHash.toLowerCase(),
         voterAddress: data.voterAddress,
         blockNumber: data.blockNumber,
         blockTimestamp: new Date(data.blockTimestamp),
@@ -54,9 +104,9 @@ export class VoteSubmissionsService {
     return this.prisma.voteSubmission.update({
       where: { id },
       data: {
-        electionId:
+        onchainElectionId:
           data.electionId === undefined ? undefined : BigInt(data.electionId),
-        onchainTxHash: data.onchainTxHash,
+        onchainTxHash: data.onchainTxHash?.toLowerCase(),
         voterAddress: data.voterAddress,
         blockNumber: data.blockNumber,
         blockTimestamp: data.blockTimestamp
@@ -67,4 +117,3 @@ export class VoteSubmissionsService {
     });
   }
 }
-

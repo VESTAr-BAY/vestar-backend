@@ -1,9 +1,10 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import {
   BallotPolicy,
+  ElectionSyncState,
+  OnchainElectionState,
   PaymentMode,
   Prisma,
-  PrivateElectionState,
   VisibilityMode,
 } from '@prisma/client';
 import {
@@ -37,6 +38,8 @@ const electionAbi = parseAbi([
   'function state() view returns (uint8)',
   'function getElectionConfig() view returns ((bytes32 electionId,bytes32 seriesId,uint8 visibilityMode,bytes32 titleHash,bytes32 candidateManifestHash,string candidateManifestURI,uint64 startAt,uint64 endAt,uint64 resultRevealAt,uint8 minKarmaTier,uint8 ballotPolicy,uint64 resetInterval,uint8 paymentMode,uint256 costPerBallot,bool allowMultipleChoice,uint16 maxSelectionsPerSubmission,int32 timezoneWindowOffset,address paymentToken,bytes electionPublicKey,bytes32 privateKeyCommitmentHash,uint16 keySchemeVersion))',
 ]);
+
+const ZERO_BYTES32 = `0x${'0'.repeat(64)}` as const;
 
 @Injectable()
 export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
@@ -149,6 +152,7 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
 
       await this.reconcilePreparedElections(client, latestBlock);
       await this.reconcilePrivateVoteSubmissions(client, latestBlock);
+      await this.reconcileOnchainElectionStates(client);
     } catch (error) {
       this.logger.error('Election indexer poll failed', error as Error);
     }
@@ -191,14 +195,14 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const privateElections = await this.prisma.election.findMany({
+    const privateElections = await this.prisma.onchainElection.findMany({
       where: {
         visibilityMode: VisibilityMode.PRIVATE,
-        onchainElectionAddress: { not: null },
       },
       select: {
         id: true,
         onchainElectionAddress: true,
+        onchainElectionId: true,
       },
     });
 
@@ -211,13 +215,30 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const electionIdByAddress = new Map(
+    const dbElectionByAddress = new Map(
       privateElections
         .filter(
-          (election): election is typeof election & { onchainElectionAddress: string } =>
-            Boolean(election.onchainElectionAddress),
+          (
+            election,
+          ): election is typeof election & {
+            onchainElectionAddress: string;
+            onchainElectionId: string;
+          } => Boolean(election.onchainElectionAddress && election.onchainElectionId),
         )
-        .map((election) => [getAddress(election.onchainElectionAddress), election.id]),
+        .map((election) => [getAddress(election.onchainElectionAddress), election]),
+    );
+
+    const dbElectionByOnchainId = new Map(
+      privateElections
+        .filter(
+          (
+            election,
+          ): election is typeof election & {
+            onchainElectionAddress: string;
+            onchainElectionId: string;
+          } => Boolean(election.onchainElectionAddress && election.onchainElectionId),
+        )
+        .map((election) => [election.onchainElectionId.toLowerCase(), election]),
     );
 
     const logs = await client.getLogs({
@@ -232,9 +253,20 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
         continue;
       }
 
-      const electionAddress = log.address;
-      const dbElectionId = electionIdByAddress.get(electionAddress);
-      if (!dbElectionId) {
+      const dbElection =
+        dbElectionByAddress.get(log.address) ??
+        (log.args.electionId
+          ? dbElectionByOnchainId.get(
+              (log.args.electionId as string).toLowerCase(),
+            )
+          : undefined);
+
+      if (!dbElection) {
+        this.logger.warn(
+          `Private vote submission election not found for address ${log.address} / electionId ${
+            (log.args.electionId as string | undefined) ?? 'unknown'
+          }`,
+        );
         continue;
       }
 
@@ -259,7 +291,7 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
       const createdSubmission = await this.prisma.voteSubmission.upsert({
         where: { onchainTxHash: log.transactionHash },
         create: {
-          electionId: dbElectionId,
+          onchainElectionId: dbElection.id,
           onchainTxHash: log.transactionHash,
           voterAddress: transaction.from,
           blockNumber: Number(log.blockNumber),
@@ -319,8 +351,8 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
     client: ReturnType<typeof createPublicClient>,
     latestBlock: bigint,
   ) {
-    const pendingPreparedCount = await this.prisma.election.count({
-      where: { state: PrivateElectionState.PREPARED },
+    const pendingPreparedCount = await this.prisma.electionDraft.count({
+      where: { syncState: ElectionSyncState.PREPARED },
     });
 
     if (pendingPreparedCount === 0) {
@@ -365,6 +397,63 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
       latestBlock > lookbackBlocks ? latestBlock - lookbackBlocks : 0n;
 
     await this.indexPrivateVoteRange(client, fromBlock, latestBlock);
+  }
+
+  private async reconcileOnchainElectionStates(
+    client: ReturnType<typeof createPublicClient>,
+  ) {
+    const electionsToRefresh = await this.prisma.onchainElection.findMany({
+      where: {
+        onchainState: {
+          in: [
+            OnchainElectionState.SCHEDULED,
+            OnchainElectionState.ACTIVE,
+            OnchainElectionState.CLOSED,
+            OnchainElectionState.KEY_REVEAL_PENDING,
+          ],
+        },
+      },
+      select: {
+        id: true,
+        onchainElectionId: true,
+        onchainElectionAddress: true,
+        onchainState: true,
+      },
+    });
+
+    for (const election of electionsToRefresh) {
+      if (!election.onchainElectionAddress) {
+        continue;
+      }
+
+      try {
+        const nextState = await client.readContract({
+          address: getAddress(election.onchainElectionAddress),
+          abi: electionAbi,
+          functionName: 'state',
+        });
+
+        const mappedState = this.mapOnchainStateToDbState(Number(nextState));
+        if (mappedState === election.onchainState) {
+          continue;
+        }
+
+        await this.prisma.onchainElection.update({
+          where: { id: election.id },
+          data: { onchainState: mappedState },
+        });
+
+        if (mappedState === OnchainElectionState.FINALIZED) {
+          await this.finalizedTallyService.finalizeForElection(election.id);
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Failed to refresh onchain state for election ${election.onchainElectionId}: ${
+            error instanceof Error ? error.message : 'unknown error'
+          }`,
+        );
+      }
+    }
   }
 
   private async indexElection(
@@ -414,31 +503,42 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
 
     const commitmentHash = config.privateKeyCommitmentHash as `0x${string}`;
 
-    const electionKey = await this.prisma.electionKey.findUnique({
-      where: { privateKeyCommitmentHash: commitmentHash },
-      include: { election: true },
-    });
-
-    if (!electionKey?.election) {
-      this.logger.warn(
-        `Prepared election not found for commitment hash ${commitmentHash}`,
-      );
+    if (commitmentHash.toLowerCase() === ZERO_BYTES32) {
       return;
     }
 
-    const election = electionKey.election;
+    const electionKey = await this.prisma.electionKey.findUnique({
+      where: { privateKeyCommitmentHash: commitmentHash },
+      include: { draft: true },
+    });
 
-    const nextState = this.mapOnchainStateToDbState(Number(onchainState));
+    if (!electionKey?.draft) {
+      return;
+    }
+
+    const draft = electionKey.draft;
+
+    const nextOnchainState = this.mapOnchainStateToDbState(Number(onchainState));
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.electionGroup.update({
-        where: { id: election.groupId },
+      await tx.electionSeries.update({
+        where: { id: draft.seriesId },
         data: { onchainSeriesId: seriesId },
       });
 
-      await tx.election.update({
-        where: { id: election.id },
+      await tx.electionDraft.update({
+        where: { id: draft.id },
         data: {
+          syncState: ElectionSyncState.INDEXED,
+        },
+      });
+
+      await tx.onchainElection.upsert({
+        where: {
+          onchainElectionId: electionId as string,
+        },
+        create: {
+          draftId: draft.id,
           onchainElectionId: electionId as string,
           onchainElectionAddress: electionAddress,
           organizerWalletAddress: organizer as string,
@@ -459,13 +559,43 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
               ? null
               : (config.paymentToken as string),
           costPerBallot: BigInt(config.costPerBallot).toString(),
-          state: nextState,
+          onchainState: nextOnchainState,
+        },
+        update: {
+          draftId: draft.id,
+          onchainElectionAddress: electionAddress,
+          organizerWalletAddress: organizer as string,
+          organizerVerifiedSnapshot: organizerVerifiedSnapshot as boolean,
+          visibilityMode: this.mapVisibilityMode(Number(config.visibilityMode)),
+          paymentMode: this.mapPaymentMode(Number(config.paymentMode)),
+          ballotPolicy: this.mapBallotPolicy(Number(config.ballotPolicy)),
+          startAt: new Date(Number(config.startAt) * 1000),
+          endAt: new Date(Number(config.endAt) * 1000),
+          resultRevealAt: new Date(Number(config.resultRevealAt) * 1000),
+          minKarmaTier: Number(config.minKarmaTier),
+          resetIntervalSeconds: Number(config.resetInterval),
+          allowMultipleChoice: Boolean(config.allowMultipleChoice),
+          maxSelectionsPerSubmission: Number(config.maxSelectionsPerSubmission),
+          timezoneWindowOffset: Number(config.timezoneWindowOffset),
+          paymentToken:
+            config.paymentToken === '0x0000000000000000000000000000000000000000'
+              ? null
+              : (config.paymentToken as string),
+          costPerBallot: BigInt(config.costPerBallot).toString(),
+          onchainState: nextOnchainState,
         },
       });
     });
 
-    if (nextState === PrivateElectionState.FINALIZED) {
-      await this.finalizedTallyService.finalizeForElection(election.id);
+    if (nextOnchainState === OnchainElectionState.FINALIZED) {
+      const onchainElection = await this.prisma.onchainElection.findUnique({
+        where: { onchainElectionId: electionId as string },
+        select: { id: true },
+      });
+
+      if (onchainElection) {
+        await this.finalizedTallyService.finalizeForElection(onchainElection.id);
+      }
     }
   }
 
@@ -488,20 +618,24 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private mapOnchainStateToDbState(value: number): PrivateElectionState {
+  private mapOnchainStateToDbState(value: number): OnchainElectionState {
     switch (value) {
       case 0:
+        return OnchainElectionState.SCHEDULED;
       case 1:
-        return PrivateElectionState.ACTIVE;
+        return OnchainElectionState.ACTIVE;
       case 2:
+        return OnchainElectionState.CLOSED;
       case 3:
+        return OnchainElectionState.KEY_REVEAL_PENDING;
       case 4:
+        return OnchainElectionState.KEY_REVEALED;
       case 5:
-        return PrivateElectionState.FINALIZED;
+        return OnchainElectionState.FINALIZED;
       case 6:
-        return PrivateElectionState.CANCELLED;
+        return OnchainElectionState.CANCELLED;
       default:
-        return PrivateElectionState.ONCHAIN_PENDING;
+        return OnchainElectionState.SCHEDULED;
     }
   }
 

@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { PrivateElectionState } from '@prisma/client';
 import { toOptionalBigInt } from '../../common/utils/query.utils';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ResultSummariesService } from '../result-summaries/result-summaries.service';
@@ -21,21 +20,29 @@ export class FinalizedTallyService {
 
   async finalizeForElection(electionIdInput: string | bigint) {
     const electionId = BigInt(electionIdInput);
-    const [candidates, validBallots] = await Promise.all([
-      this.prisma.electionCandidate.findMany({
-        where: { electionId },
-        orderBy: { displayOrder: 'asc' },
-        select: { candidateKey: true },
+    const [onchainElection, validBallots] = await Promise.all([
+      this.prisma.onchainElection.findUnique({
+        where: { id: electionId },
+        include: {
+          draft: {
+            include: {
+              electionCandidates: {
+                orderBy: { displayOrder: 'asc' },
+              },
+            },
+          },
+        },
       }),
       this.prisma.decryptedBallot.findMany({
         where: {
           isValid: true,
-          voteSubmission: { electionId },
+          voteSubmission: { onchainElectionId: electionId },
         },
         select: { candidateKeys: true },
       }),
     ]);
 
+    const candidates = onchainElection?.draft?.electionCandidates ?? [];
     const counts = new Map<string, number>();
     for (const candidate of candidates) {
       counts.set(candidate.candidateKey, 0);
@@ -58,12 +65,12 @@ export class FinalizedTallyService {
     const finalizedAt = new Date();
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.finalizedTally.deleteMany({ where: { electionId } });
+      await tx.finalizedTally.deleteMany({ where: { onchainElectionId: electionId } });
 
       if (counts.size > 0) {
         await tx.finalizedTally.createMany({
           data: Array.from(counts.entries()).map(([candidateKey, count]) => ({
-            electionId,
+            onchainElectionId: electionId,
             candidateKey,
             count,
             voteRatio: totalValidVotes === 0 ? 0 : count / totalValidVotes,
@@ -72,10 +79,6 @@ export class FinalizedTallyService {
         });
       }
 
-      await tx.election.update({
-        where: { id: electionId },
-        data: { state: PrivateElectionState.FINALIZED },
-      });
     });
 
     await this.resultSummariesService.recomputeForElection(electionId);
@@ -85,9 +88,9 @@ export class FinalizedTallyService {
   findAll(query: { electionId?: string }) {
     return this.prisma.finalizedTally.findMany({
       where: {
-        electionId: toOptionalBigInt(query.electionId),
+        onchainElectionId: toOptionalBigInt(query.electionId),
       },
-      orderBy: [{ electionId: 'asc' }, { candidateKey: 'asc' }],
+      orderBy: [{ onchainElectionId: 'asc' }, { candidateKey: 'asc' }],
     });
   }
 
@@ -99,13 +102,13 @@ export class FinalizedTallyService {
     const electionId = BigInt(data.electionId);
     return this.prisma.finalizedTally.upsert({
       where: {
-        electionId_candidateKey: {
-          electionId,
+        onchainElectionId_candidateKey: {
+          onchainElectionId: electionId,
           candidateKey: data.candidateKey,
         },
       },
       create: {
-        electionId,
+        onchainElectionId: electionId,
         candidateKey: data.candidateKey,
         count: data.count,
         voteRatio: data.voteRatio,

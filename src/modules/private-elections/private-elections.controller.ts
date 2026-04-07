@@ -11,12 +11,15 @@ export class PrivateElectionsController {
   prepare(
     @Body()
     body: {
-      groupKey: string;
+      seriesKey: string;
+      seriesCoverImageUrl?: string | null;
       title: string;
+      coverImageUrl?: string | null;
       candidateManifestPreimage: {
         candidates: Array<{
           candidateKey: string;
           displayOrder: number;
+          imageUrl?: string | null;
         }>;
       };
     },

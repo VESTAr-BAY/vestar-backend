@@ -18,6 +18,15 @@ export class VoteSubmissionsController {
     return this.voteSubmissionsService.findAll({ electionId, voterAddress });
   }
 
+  @Get('by-tx-hash')
+  findByTxHash(@Query('txHash') txHash?: string) {
+    if (!txHash) {
+      return null;
+    }
+
+    return this.voteSubmissionsService.findByTxHash(txHash);
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseBigIntPipe) id: bigint) {
     return this.voteSubmissionsService.findOne(id);

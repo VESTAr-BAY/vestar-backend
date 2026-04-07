@@ -3,7 +3,7 @@ import { toOptionalBigInt } from '../../common/utils/query.utils';
 import { PrismaService } from '../../prisma/prisma.service';
 
 type CreateElectionKeyDto = {
-  electionId?: string | bigint | null;
+  draftId?: string | bigint | null;
   publicKey: string;
   privateKeyCommitmentHash: string;
   privateKeyEncrypted: string;
@@ -26,14 +26,14 @@ export class ElectionKeysService {
   findOne(id: bigint) {
     return this.prisma.electionKey.findUnique({
       where: { id },
-      include: { election: true },
+      include: { draft: true },
     });
   }
 
   findByCommitmentHash(privateKeyCommitmentHash: string) {
     return this.prisma.electionKey.findUnique({
       where: { privateKeyCommitmentHash },
-      include: { election: true },
+      include: { draft: true },
     });
   }
 
@@ -41,8 +41,8 @@ export class ElectionKeysService {
     return this.prisma.electionKey.create({
       data: {
         ...data,
-        electionId: toOptionalBigInt(
-          data.electionId === null ? undefined : String(data.electionId ?? ''),
+        draftId: toOptionalBigInt(
+          data.draftId === null ? undefined : String(data.draftId ?? ''),
         ) ?? null,
         isRevealed: data.isRevealed ?? false,
         revealedAt: data.revealedAt ? new Date(data.revealedAt) : null,
@@ -55,11 +55,11 @@ export class ElectionKeysService {
       where: { id },
       data: {
         ...data,
-        electionId:
-          data.electionId === undefined
+        draftId:
+          data.draftId === undefined
             ? undefined
-            : data.electionId
-              ? BigInt(data.electionId)
+            : data.draftId
+              ? BigInt(data.draftId)
               : null,
         revealedAt:
           data.revealedAt === undefined
@@ -71,4 +71,3 @@ export class ElectionKeysService {
     });
   }
 }
-

@@ -11,6 +11,7 @@ import { InvalidBallotsModule } from './modules/invalid-ballots/invalid-ballots.
 import { LiveTallyModule } from './modules/live-tally/live-tally.module';
 import { PrivateElectionsModule } from './modules/private-elections/private-elections.module';
 import { ResultSummariesModule } from './modules/result-summaries/result-summaries.module';
+import { UploadsModule } from './modules/uploads/uploads.module';
 import { VerifiedOrganizersModule } from './modules/verified-organizers/verified-organizers.module';
 import { VoteSubmissionsModule } from './modules/vote-submissions/vote-submissions.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -32,6 +33,7 @@ import { PrismaModule } from './prisma/prisma.module';
     FinalizedTallyModule,
     ResultSummariesModule,
     PrivateElectionsModule,
+    UploadsModule,
   ],
 })
 export class AppModule {}
