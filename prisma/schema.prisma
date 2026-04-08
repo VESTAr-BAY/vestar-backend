@@ -143,7 +143,7 @@ model OnchainElection {
 
 model OpenVoteSubmission {
   id                BigInt          @id @default(autoincrement())
-  onchainElectionId BigInt          @map("onchain_election_id_ref")
+  electionRefId BigInt          @map("election_ref_id")
   onchainTxHash     String          @unique @map("onchain_tx_hash")
   voterAddress      String          @map("voter_address")
   blockNumber       Int             @map("block_number")
@@ -153,21 +153,21 @@ model OpenVoteSubmission {
   ballotsSpent      Int             @map("ballots_spent")
   paymentAmount     String          @map("payment_amount")
   createdAt         DateTime        @default(now()) @map("created_at")
-  onchainElection   OnchainElection @relation(fields: [onchainElectionId], references: [id])
+  onchainElection   OnchainElection @relation(fields: [electionRefId], references: [id])
 
-  @@index([onchainElectionId, blockNumber])
+  @@index([electionRefId, blockNumber])
   @@index([voterAddress])
   @@map("open_vote_submissions")
 }
 
 model InvalidOnchainElection {
   id                BigInt          @id @default(autoincrement())
-  onchainElectionId BigInt          @unique @map("onchain_election_id_ref")
+  electionRefId BigInt          @unique @map("election_ref_id")
   reasonCode        String          @map("reason_code")
   reasonDetail      String?         @map("reason_detail")
   createdAt         DateTime        @default(now()) @map("created_at")
   updatedAt         DateTime        @updatedAt @map("updated_at")
-  onchainElection   OnchainElection @relation(fields: [onchainElectionId], references: [id])
+  onchainElection   OnchainElection @relation(fields: [electionRefId], references: [id])
 
   @@index([reasonCode])
   @@map("invalid_onchain_elections")
@@ -204,18 +204,18 @@ model ElectionCandidate {
 
 model VoteSubmission {
   id              BigInt           @id @default(autoincrement())
-  onchainElectionId BigInt         @map("onchain_election_id_ref")
+  electionRefId BigInt         @map("election_ref_id")
   onchainTxHash   String           @unique @map("onchain_tx_hash")
   voterAddress    String           @map("voter_address")
   blockNumber     Int              @map("block_number")
   blockTimestamp  DateTime         @map("block_timestamp")
   encryptedBallot String           @map("encrypted_ballot")
   createdAt       DateTime         @default(now()) @map("created_at")
-  onchainElection OnchainElection  @relation(fields: [onchainElectionId], references: [id])
+  onchainElection OnchainElection  @relation(fields: [electionRefId], references: [id])
   decryptedBallot DecryptedBallot?
   invalidBallots  InvalidBallot[]
 
-  @@index([onchainElectionId, blockNumber])
+  @@index([electionRefId, blockNumber])
   @@index([voterAddress])
   @@map("vote_submissions")
 }
@@ -249,38 +249,38 @@ model InvalidBallot {
 
 model LiveTally {
   id           BigInt   @id @default(autoincrement())
-  onchainElectionId BigInt   @map("onchain_election_id_ref")
+  electionRefId BigInt   @map("election_ref_id")
   candidateKey String   @map("candidate_key")
   count        Int
   updatedAt    DateTime @updatedAt @map("updated_at")
-  onchainElection OnchainElection @relation(fields: [onchainElectionId], references: [id])
+  onchainElection OnchainElection @relation(fields: [electionRefId], references: [id])
 
-  @@unique([onchainElectionId, candidateKey])
+  @@unique([electionRefId, candidateKey])
   @@map("live_tally")
 }
 
 model FinalizedTally {
   id           BigInt   @id @default(autoincrement())
-  onchainElectionId BigInt   @map("onchain_election_id_ref")
+  electionRefId BigInt   @map("election_ref_id")
   candidateKey String   @map("candidate_key")
   count        Int
   voteRatio    Float    @map("vote_ratio")
   finalizedAt  DateTime @map("finalized_at")
-  onchainElection OnchainElection @relation(fields: [onchainElectionId], references: [id])
+  onchainElection OnchainElection @relation(fields: [electionRefId], references: [id])
 
-  @@unique([onchainElectionId, candidateKey])
+  @@unique([electionRefId, candidateKey])
   @@map("finalized_tally")
 }
 
 model ResultSummary {
   id                    BigInt   @id @default(autoincrement())
-  onchainElectionId     BigInt   @unique @map("onchain_election_id_ref")
+  electionRefId     BigInt   @unique @map("election_ref_id")
   totalSubmissions      Int      @map("total_submissions")
   totalDecryptedBallots Int      @map("total_decrypted_ballots")
   totalValidVotes       Int      @map("total_valid_votes")
   totalInvalidVotes     Int      @map("total_invalid_votes")
   createdAt             DateTime @default(now()) @map("created_at")
-  onchainElection       OnchainElection @relation(fields: [onchainElectionId], references: [id])
+  onchainElection       OnchainElection @relation(fields: [electionRefId], references: [id])
 
   @@map("result_summaries")
 }

@@ -11,8 +11,10 @@ import {
   createPublicClient,
   decodeFunctionData,
   defineChain,
+  encodeAbiParameters,
   getAddress,
   http,
+  keccak256,
   parseAbi,
   type Address,
   type Hex,
@@ -327,11 +329,22 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
       const encryptedBallot = this.normalizeEncryptedBallotArg(
         decoded.args[0] as Hex,
       );
+      const encryptedBallotHash = keccak256(decoded.args[0] as Hex);
+
+      if (
+        encryptedBallotHash.toLowerCase() !==
+        String(log.args.encryptedBallotHash ?? '').toLowerCase()
+      ) {
+        this.logger.warn(
+          `Private vote submission ballot hash mismatch for tx ${log.transactionHash}`,
+        );
+        continue;
+      }
 
       const createdSubmission = await this.prisma.voteSubmission.upsert({
         where: { onchainTxHash: log.transactionHash },
         create: {
-          onchainElectionId: dbElection.id,
+          electionRefId: dbElection.id,
           onchainTxHash: log.transactionHash,
           voterAddress: transaction.from,
           blockNumber: Number(log.blockNumber),
@@ -467,10 +480,24 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
         continue;
       }
 
+      const candidateBatchHash = keccak256(
+        encodeAbiParameters([{ type: 'string[]' }], [candidateKeys]),
+      );
+
+      if (
+        candidateBatchHash.toLowerCase() !==
+        String(log.args.candidateBatchHash ?? '').toLowerCase()
+      ) {
+        this.logger.warn(
+          `Open vote submission candidate batch hash mismatch for tx ${log.transactionHash}`,
+        );
+        continue;
+      }
+
       await this.prisma.openVoteSubmission.upsert({
         where: { onchainTxHash: log.transactionHash },
         create: {
-          onchainElectionId: dbElection.id,
+          electionRefId: dbElection.id,
           onchainTxHash: log.transactionHash,
           voterAddress: transaction.from,
           blockNumber: Number(log.blockNumber),
@@ -714,11 +741,46 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
     const nextOnchainState = this.mapOnchainStateToDbState(Number(onchainState));
 
     await this.prisma.$transaction(async (tx) => {
+      const existingSeriesByOnchainId = await tx.electionSeries.findUnique({
+        where: { onchainSeriesId: seriesId },
+        select: { id: true, coverImageUrl: true },
+      });
+
       if (draft) {
-        await tx.electionSeries.update({
-          where: { id: draft.seriesId },
-          data: { onchainSeriesId: seriesId },
-        });
+        if (
+          existingSeriesByOnchainId &&
+          existingSeriesByOnchainId.id !== draft.seriesId
+        ) {
+          await tx.electionDraft.update({
+            where: { id: draft.id },
+            data: {
+              seriesId: existingSeriesByOnchainId.id,
+              syncState: ElectionSyncState.INDEXED,
+            },
+          });
+
+          const remainingDraftCount = await tx.electionDraft.count({
+            where: { seriesId: draft.seriesId },
+          });
+
+          if (remainingDraftCount === 0) {
+            await tx.electionSeries.delete({
+              where: { id: draft.seriesId },
+            });
+          }
+        } else {
+          await tx.electionSeries.update({
+            where: { id: draft.seriesId },
+            data: { onchainSeriesId: seriesId },
+          });
+
+          await tx.electionDraft.update({
+            where: { id: draft.id },
+            data: {
+              syncState: ElectionSyncState.INDEXED,
+            },
+          });
+        }
       } else {
         await tx.electionSeries.upsert({
           where: { onchainSeriesId: seriesId },
@@ -728,15 +790,6 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
           },
           update: {},
         });
-      }
-
-      if (draft) {
-        await tx.electionDraft.update({
-          where: { id: draft.id },
-          data: {
-            syncState: ElectionSyncState.INDEXED,
-          },
-          });
       }
 
       const onchainElection = await tx.onchainElection.upsert({
@@ -798,14 +851,14 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
         await tx.$executeRaw(
           Prisma.sql`
             DELETE FROM "invalid_onchain_elections"
-            WHERE "onchain_election_id_ref" = ${onchainElection.id}
+            WHERE "election_ref_id" = ${onchainElection.id}
           `,
         );
       } else {
         await tx.$executeRaw(
           Prisma.sql`
             INSERT INTO "invalid_onchain_elections" (
-              "onchain_election_id_ref",
+              "election_ref_id",
               "reason_code",
               "reason_detail",
               "created_at",
@@ -818,7 +871,7 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
               NOW(),
               NOW()
             )
-            ON CONFLICT ("onchain_election_id_ref")
+            ON CONFLICT ("election_ref_id")
             DO UPDATE SET
               "reason_code" = EXCLUDED."reason_code",
               "reason_detail" = EXCLUDED."reason_detail",
@@ -873,7 +926,7 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
     electionAddress: Address,
   ) {
     const existingCount = await this.prisma.finalizedTally.count({
-      where: { onchainElectionId: electionDbId },
+      where: { electionRefId: electionDbId },
     });
 
     if (existingCount > 0) {

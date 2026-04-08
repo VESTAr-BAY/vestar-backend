@@ -20,7 +20,7 @@ export class VoteSubmissionsService {
   findAll(query: { electionId?: string; voterAddress?: string }) {
     return this.prisma.voteSubmission.findMany({
       where: {
-        onchainElectionId: toOptionalBigInt(query.electionId),
+        electionRefId: toOptionalBigInt(query.electionId),
         voterAddress: query.voterAddress,
       },
       orderBy: [{ blockNumber: 'desc' }, { id: 'desc' }],
@@ -90,7 +90,7 @@ export class VoteSubmissionsService {
   create(data: CreateVoteSubmissionDto) {
     return this.prisma.voteSubmission.create({
       data: {
-        onchainElectionId: BigInt(data.electionId),
+        electionRefId: BigInt(data.electionId),
         onchainTxHash: data.onchainTxHash.toLowerCase(),
         voterAddress: data.voterAddress,
         blockNumber: data.blockNumber,
@@ -104,7 +104,7 @@ export class VoteSubmissionsService {
     return this.prisma.voteSubmission.update({
       where: { id },
       data: {
-        onchainElectionId:
+        electionRefId:
           data.electionId === undefined ? undefined : BigInt(data.electionId),
         onchainTxHash: data.onchainTxHash?.toLowerCase(),
         voterAddress: data.voterAddress,

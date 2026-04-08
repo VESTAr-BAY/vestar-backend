@@ -47,7 +47,7 @@ export class FinalizedTallyService {
 
     if (onchainElection?.visibilityMode === VisibilityMode.OPEN) {
       const openSubmissions = await this.prisma.openVoteSubmission.findMany({
-        where: { onchainElectionId: electionId },
+        where: { electionRefId: electionId },
         select: { candidateKeys: true },
       });
       totalValidVotes = openSubmissions.length;
@@ -68,7 +68,7 @@ export class FinalizedTallyService {
       const validBallots = await this.prisma.decryptedBallot.findMany({
         where: {
           isValid: true,
-          voteSubmission: { onchainElectionId: electionId },
+          voteSubmission: { electionRefId: electionId },
         },
         select: { candidateKeys: true },
       });
@@ -92,12 +92,12 @@ export class FinalizedTallyService {
       : new Date();
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.finalizedTally.deleteMany({ where: { onchainElectionId: electionId } });
+      await tx.finalizedTally.deleteMany({ where: { electionRefId: electionId } });
 
       if (counts.size > 0) {
         await tx.finalizedTally.createMany({
           data: Array.from(counts.entries()).map(([candidateKey, count]) => ({
-            onchainElectionId: electionId,
+            electionRefId: electionId,
             candidateKey,
             count,
             voteRatio: totalValidVotes === 0 ? 0 : count / totalValidVotes,
@@ -115,9 +115,9 @@ export class FinalizedTallyService {
   findAll(query: { electionId?: string }) {
     return this.prisma.finalizedTally.findMany({
       where: {
-        onchainElectionId: toOptionalBigInt(query.electionId),
+        electionRefId: toOptionalBigInt(query.electionId),
       },
-      orderBy: [{ onchainElectionId: 'asc' }, { candidateKey: 'asc' }],
+      orderBy: [{ electionRefId: 'asc' }, { candidateKey: 'asc' }],
     });
   }
 
@@ -129,13 +129,13 @@ export class FinalizedTallyService {
     const electionId = BigInt(data.electionId);
     return this.prisma.finalizedTally.upsert({
       where: {
-        onchainElectionId_candidateKey: {
-          onchainElectionId: electionId,
+        electionRefId_candidateKey: {
+          electionRefId: electionId,
           candidateKey: data.candidateKey,
         },
       },
       create: {
-        onchainElectionId: electionId,
+        electionRefId: electionId,
         candidateKey: data.candidateKey,
         count: data.count,
         voteRatio: data.voteRatio,

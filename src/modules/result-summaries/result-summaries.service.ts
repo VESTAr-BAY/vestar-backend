@@ -29,7 +29,7 @@ export class ResultSummariesService {
 
     if (onchainElection?.visibilityMode === VisibilityMode.OPEN) {
       totalSubmissions = await this.prisma.openVoteSubmission.count({
-        where: { onchainElectionId: electionId },
+        where: { electionRefId: electionId },
       });
       totalDecryptedBallots = 0;
       totalValidVotes = totalSubmissions;
@@ -37,11 +37,11 @@ export class ResultSummariesService {
     } else {
       const [privateTotalSubmissions, decryptedBallots] = await Promise.all([
         this.prisma.voteSubmission.count({
-          where: { onchainElectionId: electionId },
+          where: { electionRefId: electionId },
         }),
         this.prisma.decryptedBallot.findMany({
           where: {
-            voteSubmission: { onchainElectionId: electionId },
+            voteSubmission: { electionRefId: electionId },
           },
           select: { isValid: true },
         }),
@@ -65,7 +65,7 @@ export class ResultSummariesService {
   findAll(query: { electionId?: string }) {
     return this.prisma.resultSummary.findMany({
       where: {
-        onchainElectionId: toOptionalBigInt(query.electionId),
+        electionRefId: toOptionalBigInt(query.electionId),
       },
       orderBy: { id: 'asc' },
     });
@@ -78,9 +78,9 @@ export class ResultSummariesService {
   upsert(data: UpsertResultSummaryDto) {
     const electionId = BigInt(data.electionId);
     return this.prisma.resultSummary.upsert({
-      where: { onchainElectionId: electionId },
+      where: { electionRefId: electionId },
       create: {
-        onchainElectionId: electionId,
+        electionRefId: electionId,
         totalSubmissions: data.totalSubmissions,
         totalDecryptedBallots: data.totalDecryptedBallots,
         totalValidVotes: data.totalValidVotes,
