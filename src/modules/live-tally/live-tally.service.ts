@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { toOptionalBigInt } from '../../common/utils/query.utils';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ResultSummariesService } from '../result-summaries/result-summaries.service';
 
 type UpsertLiveTallyDto = {
   electionId: string | bigint;
@@ -10,7 +11,10 @@ type UpsertLiveTallyDto = {
 
 @Injectable()
 export class LiveTallyService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly resultSummariesService: ResultSummariesService,
+  ) {}
 
   async recomputeForElection(electionIdInput: string | bigint) {
     const electionId = BigInt(electionIdInput);
@@ -70,6 +74,8 @@ export class LiveTallyService {
         })),
       });
     });
+
+    await this.resultSummariesService.recomputeForElection(electionId);
 
     return this.findAll({ electionId: electionId.toString() });
   }

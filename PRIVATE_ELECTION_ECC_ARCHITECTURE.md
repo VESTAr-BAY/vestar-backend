@@ -255,6 +255,9 @@ flowchart TD
 - `live_tally`는 증분 카운트가 아니라 원본 `decrypted_ballots`를 기준으로 재계산하는 구조다.
 - 유효표만 count에 반영된다.
 - 프론트의 Live Tally 목록 총 투표수는 현재 `resultSummary`가 아니라 `validDecryptedBallotCount`를 사용하도록 맞춘 상태다.
+- 새 private submission이 들어오면 `processSubmission()`이 복호화/검증을 수행한 뒤 `live_tally`와 `result_summaries`를 같이 재계산한다.
+- `private-vote-submitted` cursor를 과거로 돌려 replay할 때는, 이미 `decrypted_ballot`가 있는 submission을 다시 복호화하지 않는다.
+- 이 replay 경로에서는 기존 `decrypted_ballots` / `invalid_ballots`는 그대로 두고, `live_tally`와 `result_summaries`만 다시 재계산한다.
 
 ## 6. Key Reveal Flow
 
@@ -297,9 +300,12 @@ flowchart TD
   B --> C[index factory ElectionCreated logs]
   C --> D[index each election instance metadata]
   D --> E[index EncryptedVoteSubmitted logs from known election addresses]
-  E --> F[process new vote submissions]
-  F --> G[reconcile prepared drafts]
-  G --> H[reconcile onchain election states]
+  E --> F{decryptedBallot exists?}
+  F -- no --> G[processSubmission]
+  F -- yes --> H[recompute live_tally and result_summaries]
+  G --> I[reconcile prepared drafts]
+  H --> I
+  I --> J[reconcile onchain election states]
 ```
 
 ### 7.1 상세 설명
@@ -310,7 +316,8 @@ flowchart TD
 - 투표 쪽
   - DB에 저장된 private election address들을 대상으로 `EncryptedVoteSubmitted`를 polling한다.
   - tx input을 decode해 `encryptedBallot`을 추출한다.
-  - `vote_submissions`를 만들고 곧바로 ballot processor를 태운다.
+  - `vote_submissions`를 만들고, 새 submission이면 곧바로 ballot processor를 태운다.
+  - 이미 `decryptedBallot`가 있는 submission을 replay로 다시 만나면 복호화는 다시 하지 않고 `live_tally`, `result_summaries`만 재계산한다.
 - 상태 재동기화
   - `onchain_elections.onchain_state`를 주기적으로 다시 읽어 갱신한다.
 

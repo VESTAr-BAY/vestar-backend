@@ -19,6 +19,7 @@ import {
 } from 'viem';
 import { PrismaService as AppPrismaService } from '../../../prisma/prisma.service';
 import { FinalizedTallyService } from '../../finalized-tally/finalized-tally.service';
+import { LiveTallyService } from '../../live-tally/live-tally.service';
 import { PrivateBallotProcessorService } from '../../vote-submissions/private-ballot-processor.service';
 
 const factoryAbi = parseAbi([
@@ -53,6 +54,7 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: AppPrismaService,
     private readonly finalizedTallyService: FinalizedTallyService,
+    private readonly liveTallyService: LiveTallyService,
     private readonly privateBallotProcessorService: PrivateBallotProcessorService,
   ) {}
 
@@ -308,6 +310,8 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
         await this.privateBallotProcessorService.processSubmission(
           createdSubmission.id,
         );
+      } else {
+        await this.liveTallyService.recomputeForElection(dbElection.id);
       }
     }
   }
