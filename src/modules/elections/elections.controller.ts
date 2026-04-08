@@ -1,8 +1,9 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import {
   BallotPolicy,
+  ElectionSyncState,
+  OnchainElectionState,
   PaymentMode,
-  PrivateElectionState,
   VisibilityMode,
 } from '@prisma/client';
 import { ParseBigIntPipe } from '../../common/pipes/parse-bigint.pipe';
@@ -12,13 +13,49 @@ import { ElectionsService } from './elections.service';
 export class ElectionsController {
   constructor(private readonly electionsService: ElectionsService) {}
 
-  @Get()
-  findAll(
-    @Query('groupId') groupId?: string,
-    @Query('state') state?: PrivateElectionState,
+  @Get('revealed-private-key')
+  getRevealedPrivateKey(
+    @Query('onchainElectionId') onchainElectionId: string,
+  ) {
+    return this.electionsService.getRevealedPrivateKeyByOnchainElectionId(
+      onchainElectionId,
+    );
+  }
+
+  @Get('meta')
+  findMetadata(
+    @Query('seriesId') seriesId?: string,
+    @Query('onchainElectionId') onchainElectionId?: string,
+    @Query('onchainElectionAddress') onchainElectionAddress?: string,
+    @Query('syncState') syncState?: ElectionSyncState,
     @Query('visibilityMode') visibilityMode?: VisibilityMode,
   ) {
-    return this.electionsService.findAll({ groupId, state, visibilityMode });
+    return this.electionsService.findMetadata({
+      seriesId,
+      onchainElectionId,
+      onchainElectionAddress,
+      syncState,
+      visibilityMode,
+    });
+  }
+
+  @Get()
+  findAll(
+    @Query('seriesId') seriesId?: string,
+    @Query('onchainElectionId') onchainElectionId?: string,
+    @Query('onchainElectionAddress') onchainElectionAddress?: string,
+    @Query('syncState') syncState?: ElectionSyncState,
+    @Query('onchainState') onchainState?: OnchainElectionState,
+    @Query('visibilityMode') visibilityMode?: VisibilityMode,
+  ) {
+    return this.electionsService.findAll({
+      seriesId,
+      onchainElectionId,
+      onchainElectionAddress,
+      syncState,
+      onchainState,
+      visibilityMode,
+    });
   }
 
   @Get(':id')
@@ -30,11 +67,10 @@ export class ElectionsController {
   create(
     @Body()
     body: {
-      groupId: string;
-      onchainElectionId?: string | null;
-      onchainElectionAddress?: string | null;
-      title: string;
-      candidateManifestPreimage: unknown;
+      draftId?: string | null;
+      onchainSeriesId?: string | null;
+      onchainElectionId: string;
+      onchainElectionAddress: string;
       organizerWalletAddress: string;
       organizerVerifiedSnapshot?: boolean;
       visibilityMode: VisibilityMode;
@@ -50,7 +86,7 @@ export class ElectionsController {
       timezoneWindowOffset: number;
       paymentToken?: string | null;
       costPerBallot: string;
-      state: PrivateElectionState;
+      onchainState: OnchainElectionState;
     },
   ) {
     return this.electionsService.create(body);
@@ -61,11 +97,10 @@ export class ElectionsController {
     @Param('id', ParseBigIntPipe) id: bigint,
     @Body()
     body: Partial<{
-      groupId: string;
-      onchainElectionId?: string | null;
-      onchainElectionAddress?: string | null;
-      title: string;
-      candidateManifestPreimage: unknown;
+      draftId?: string | null;
+      onchainSeriesId?: string | null;
+      onchainElectionId: string;
+      onchainElectionAddress: string;
       organizerWalletAddress: string;
       organizerVerifiedSnapshot?: boolean;
       visibilityMode: VisibilityMode;
@@ -81,7 +116,7 @@ export class ElectionsController {
       timezoneWindowOffset: number;
       paymentToken?: string | null;
       costPerBallot: string;
-      state: PrivateElectionState;
+      onchainState: OnchainElectionState;
     }>,
   ) {
     return this.electionsService.update(id, body);

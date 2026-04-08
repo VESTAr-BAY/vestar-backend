@@ -1,21 +1,22 @@
 import { Injectable } from '@nestjs/common';
 import {
   BallotPolicy,
+  OnchainElectionState,
   Prisma,
-  PrivateElectionState,
 } from '@prisma/client';
 import {
-  constants,
   createDecipheriv,
   createHash,
-  privateDecrypt,
+  createPrivateKey,
+  createPublicKey,
+  diffieHellman,
 } from 'node:crypto';
 import { LiveTallyService } from '../live-tally/live-tally.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 type EncryptedBallotEnvelope = {
   algorithm: string;
-  encryptedKey: string;
+  ephemeralPublicKey: string;
   iv: string;
   authTag: string;
   ciphertext: string;
@@ -54,11 +55,15 @@ export class PrivateBallotProcessorService {
     const submission = await this.prisma.voteSubmission.findUnique({
       where: { id: voteSubmissionId },
       include: {
-        election: {
+        onchainElection: {
           include: {
-            electionKey: true,
-            electionCandidates: {
-              orderBy: { displayOrder: 'asc' },
+            draft: {
+              include: {
+                electionKey: true,
+                electionCandidates: {
+                  orderBy: { displayOrder: 'asc' },
+                },
+              },
             },
           },
         },
@@ -71,10 +76,48 @@ export class PrivateBallotProcessorService {
       throw new Error(`Vote submission ${voteSubmissionId.toString()} not found`);
     }
 
-    if (!submission.election.electionKey) {
-      throw new Error(
-        `Election ${submission.electionId.toString()} has no election key`,
-      );
+    if (!submission.onchainElection.draft?.electionKey) {
+      const processedSubmission = await this.prisma.$transaction(async (tx) => {
+        await tx.invalidBallot.deleteMany({
+          where: { voteSubmissionId: submission.id },
+        });
+
+        if (submission.decryptedBallot) {
+          await tx.decryptedBallot.delete({
+            where: { voteSubmissionId: submission.id },
+          });
+        }
+
+        await tx.decryptedBallot.create({
+          data: {
+            voteSubmissionId: submission.id,
+            candidateKeys: [] as never,
+            nonce: '',
+            isValid: false,
+            validatedAt: new Date(),
+          },
+        });
+
+        await tx.invalidBallot.create({
+          data: {
+            voteSubmissionId: submission.id,
+            reasonCode: 'MISSING_ELECTION_KEY',
+            reasonDetail: `On-chain election ${submission.onchainElectionId.toString()} is not linked to a decryptable election key`,
+          },
+        });
+
+        return tx.voteSubmission.findUnique({
+          where: { id: submission.id },
+          include: {
+            decryptedBallot: true,
+            invalidBallots: true,
+          },
+        });
+      });
+
+      await this.liveTallyService.recomputeForElection(submission.onchainElection.id);
+
+      return processedSubmission;
     }
 
     const validation = await this.validateEncryptedSubmission({
@@ -83,21 +126,22 @@ export class PrivateBallotProcessorService {
       blockTimestamp: submission.blockTimestamp,
       encryptedBallot: submission.encryptedBallot,
       election: {
-        id: submission.election.id,
-        onchainElectionId: submission.election.onchainElectionId,
-        onchainElectionAddress: submission.election.onchainElectionAddress,
-        ballotPolicy: submission.election.ballotPolicy,
-        allowMultipleChoice: submission.election.allowMultipleChoice,
+        id: submission.onchainElection.id,
+        onchainElectionId: submission.onchainElection.onchainElectionId,
+        onchainElectionAddress: submission.onchainElection.onchainElectionAddress,
+        ballotPolicy: submission.onchainElection.ballotPolicy,
+        allowMultipleChoice: submission.onchainElection.allowMultipleChoice,
         maxSelectionsPerSubmission:
-          submission.election.maxSelectionsPerSubmission,
-        resetIntervalSeconds: submission.election.resetIntervalSeconds,
-        timezoneWindowOffset: submission.election.timezoneWindowOffset,
-        startAt: submission.election.startAt,
-        endAt: submission.election.endAt,
-        state: submission.election.state,
-        electionCandidates: submission.election.electionCandidates,
+          submission.onchainElection.maxSelectionsPerSubmission,
+        resetIntervalSeconds: submission.onchainElection.resetIntervalSeconds,
+        timezoneWindowOffset: submission.onchainElection.timezoneWindowOffset,
+        startAt: submission.onchainElection.startAt,
+        endAt: submission.onchainElection.endAt,
+        onchainState: submission.onchainElection.onchainState,
+        electionCandidates: submission.onchainElection.draft.electionCandidates,
         electionKey: {
-          privateKeyEncrypted: submission.election.electionKey.privateKeyEncrypted,
+          privateKeyEncrypted:
+            submission.onchainElection.draft.electionKey.privateKeyEncrypted,
         },
       },
     });
@@ -142,7 +186,7 @@ export class PrivateBallotProcessorService {
       });
     });
 
-    await this.liveTallyService.recomputeForElection(submission.election.id);
+    await this.liveTallyService.recomputeForElection(submission.onchainElection.id);
 
     return processedSubmission;
   }
@@ -150,7 +194,7 @@ export class PrivateBallotProcessorService {
   async processPendingSubmissions(electionId?: bigint) {
     const submissions = await this.prisma.voteSubmission.findMany({
       where: {
-        electionId,
+        onchainElectionId: electionId,
         decryptedBallot: null,
       },
       orderBy: [{ blockNumber: 'asc' }, { id: 'asc' }],
@@ -175,8 +219,8 @@ export class PrivateBallotProcessorService {
     encryptedBallot: string;
     election: {
       id: bigint;
-      onchainElectionId: string | null;
-      onchainElectionAddress: string | null;
+      onchainElectionId: string;
+      onchainElectionAddress: string;
       ballotPolicy: BallotPolicy | null;
       allowMultipleChoice: boolean | null;
       maxSelectionsPerSubmission: number | null;
@@ -184,7 +228,7 @@ export class PrivateBallotProcessorService {
       timezoneWindowOffset: number | null;
       startAt: Date | null;
       endAt: Date | null;
-      state: PrivateElectionState;
+      onchainState: OnchainElectionState | null;
       electionCandidates: Array<{ candidateKey: string }>;
       electionKey: { privateKeyEncrypted: string };
     };
@@ -386,18 +430,21 @@ export class PrivateBallotProcessorService {
   ): BallotPayloadV1 {
     const envelope = this.parseEncryptedBallotEnvelope(encryptedBallot);
 
-    if (envelope.algorithm !== 'rsa-oaep-aes-256-gcm') {
+    if (envelope.algorithm !== 'ecdh-p256-aes-256-gcm') {
       throw new Error(`Unsupported encrypted ballot algorithm ${envelope.algorithm}`);
     }
 
-    const symmetricKey = privateDecrypt(
-      {
-        key: privateKeyPem,
-        padding: constants.RSA_PKCS1_OAEP_PADDING,
-        oaepHash: 'sha256',
-      },
-      Buffer.from(envelope.encryptedKey, 'base64'),
-    );
+    const privateKey = createPrivateKey(privateKeyPem);
+    const ephemeralPublicKey = createPublicKey({
+      key: Buffer.from(envelope.ephemeralPublicKey, 'base64'),
+      type: 'spki',
+      format: 'der',
+    });
+    const sharedSecret = diffieHellman({
+      privateKey,
+      publicKey: ephemeralPublicKey,
+    });
+    const symmetricKey = createHash('sha256').update(sharedSecret).digest();
 
     const decipher = createDecipheriv(
       'aes-256-gcm',
@@ -425,7 +472,7 @@ export class PrivateBallotProcessorService {
 
     if (
       !parsed.algorithm ||
-      !parsed.encryptedKey ||
+      !parsed.ephemeralPublicKey ||
       !parsed.iv ||
       !parsed.authTag ||
       !parsed.ciphertext
@@ -435,7 +482,7 @@ export class PrivateBallotProcessorService {
 
     return {
       algorithm: parsed.algorithm,
-      encryptedKey: parsed.encryptedKey,
+      ephemeralPublicKey: parsed.ephemeralPublicKey,
       iv: parsed.iv,
       authTag: parsed.authTag,
       ciphertext: parsed.ciphertext,
@@ -489,7 +536,7 @@ export class PrivateBallotProcessorService {
           not: submission.voteSubmissionId,
         },
         voteSubmission: {
-          electionId: submission.election.id,
+          onchainElectionId: submission.election.id,
           voterAddress: submission.voterAddress,
         },
       },

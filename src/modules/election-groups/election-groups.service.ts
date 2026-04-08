@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 type CreateElectionGroupDto = {
-  groupKey: string;
+  seriesKey: string;
   onchainSeriesId?: string | null;
 };
 
@@ -11,24 +11,24 @@ export class ElectionGroupsService {
   constructor(private readonly prisma: PrismaService) {}
 
   findAll() {
-    return this.prisma.electionGroup.findMany({
+    return this.prisma.electionSeries.findMany({
       orderBy: { id: 'asc' },
     });
   }
 
   findOne(id: bigint) {
-    return this.prisma.electionGroup.findUnique({
+    return this.prisma.electionSeries.findUnique({
       where: { id },
-      include: { elections: true },
+      include: { electionDrafts: true },
     });
   }
 
   create(data: CreateElectionGroupDto) {
-    return this.prisma.electionGroup.create({ data });
+    return this.prisma.electionSeries.create({ data });
   }
 
   update(id: bigint, data: Partial<CreateElectionGroupDto>) {
-    return this.prisma.electionGroup.update({
+    return this.prisma.electionSeries.update({
       where: { id },
       data,
     });

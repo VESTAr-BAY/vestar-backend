@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { ParseBigIntPipe } from '../../common/pipes/parse-bigint.pipe';
 import { ElectionGroupsService } from './election-groups.service';
 
-@Controller('election-groups')
+@Controller('election-series')
 export class ElectionGroupsController {
   constructor(private readonly electionGroupsService: ElectionGroupsService) {}
 
@@ -17,14 +17,14 @@ export class ElectionGroupsController {
   }
 
   @Post()
-  create(@Body() body: { groupKey: string; onchainSeriesId?: string | null }) {
+  create(@Body() body: { seriesKey: string; onchainSeriesId?: string | null }) {
     return this.electionGroupsService.create(body);
   }
 
   @Patch(':id')
   update(
     @Param('id', ParseBigIntPipe) id: bigint,
-    @Body() body: Partial<{ groupKey: string; onchainSeriesId?: string | null }>,
+    @Body() body: Partial<{ seriesKey: string; onchainSeriesId?: string | null }>,
   ) {
     return this.electionGroupsService.update(id, body);
   }

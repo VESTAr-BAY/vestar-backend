@@ -27,7 +27,7 @@ DATABASE_URL="postgresql://your_db_user:your_db_password@localhost:5432/your_db_
 
 현재 사용 방식:
 
-- 백엔드는 RSA 공개키/개인키 쌍을 생성한다
+- 백엔드는 P-256 공개키/개인키 쌍을 생성한다
 - private key PEM은 평문으로 저장하지 않는다
 - 이 환경변수를 바탕으로 AES-256-GCM 키를 파생해 `private_key_encrypted`로 저장한다
 
@@ -77,10 +77,17 @@ INDEXER_RPC_URL="https://your-rpc.example.com"
 
 - 인덱서가 처음 시작할 때 읽기 시작할 기본 블록 번호
 - 이미 저장된 인덱서 커서가 있으면 그 값이 우선한다
+- 로컬 개발에서는 현재 테스트를 시작한 최근 블록으로 올려두는 편이 좋다
 
 역할:
 
 - 첫 실행 시 초기 fromBlock 기준값
+
+예시:
+
+```env
+INDEXER_START_BLOCK="18825000"
+```
 
 ### `INDEXER_POLL_INTERVAL_MS`
 
@@ -98,6 +105,24 @@ INDEXER_RPC_URL="https://your-rpc.example.com"
 
 - `PREPARED` 상태 election이 남아 있을 때 최근 블록 구간을 재조회
 - 일시적 다운타임이나 재시작으로 놓친 `ElectionCreated` / `EncryptedVoteSubmitted` 이벤트 복구 보조
+
+## Key Reveal Worker 환경변수
+
+### `KEY_REVEAL_WORKER_PRIVATE_KEY`
+
+- `revealPrivateKey(bytes)`를 호출할 운영 지갑의 private key
+
+역할:
+
+- `KEY_REVEAL_PENDING` 상태가 된 private election을 감지하면
+- 백엔드가 DB의 `private_key_encrypted`를 복호화한 뒤
+- 이 지갑으로 온체인 `revealPrivateKey(...)` 트랜잭션을 전송
+
+주의:
+
+- 보통은 `platformAdmin` 지갑을 그대로 넣는 방식이 가장 단순하다
+- `platformAdmin`이 아니라면 해당 election 컨트랙트에서 `isRevealManager(address)`가 `true`인 계정이어야 한다
+- 유출 시 on-chain write 권한이 탈취될 수 있으므로 운영 비밀값으로 관리해야 한다
 
 ## 요약
 
@@ -117,3 +142,5 @@ INDEXER_RPC_URL="https://your-rpc.example.com"
   - 인덱서 polling 주기
 - `INDEXER_RECONCILE_LOOKBACK_BLOCKS`
   - 최근 블록 재스캔 범위
+- `KEY_REVEAL_WORKER_PRIVATE_KEY`
+  - key reveal 트랜잭션 서명용 운영 지갑 키

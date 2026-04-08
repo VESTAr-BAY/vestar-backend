@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { toOptionalBigInt } from '../../common/utils/query.utils';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ResultSummariesService } from '../result-summaries/result-summaries.service';
 
 type UpsertLiveTallyDto = {
   electionId: string | bigint;
@@ -10,25 +11,36 @@ type UpsertLiveTallyDto = {
 
 @Injectable()
 export class LiveTallyService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly resultSummariesService: ResultSummariesService,
+  ) {}
 
   async recomputeForElection(electionIdInput: string | bigint) {
     const electionId = BigInt(electionIdInput);
-    const [candidates, validBallots] = await Promise.all([
-      this.prisma.electionCandidate.findMany({
-        where: { electionId },
-        orderBy: { displayOrder: 'asc' },
-        select: { candidateKey: true },
+    const [onchainElection, validBallots] = await Promise.all([
+      this.prisma.onchainElection.findUnique({
+        where: { id: electionId },
+        include: {
+          draft: {
+            include: {
+              electionCandidates: {
+                orderBy: { displayOrder: 'asc' },
+              },
+            },
+          },
+        },
       }),
       this.prisma.decryptedBallot.findMany({
         where: {
           isValid: true,
-          voteSubmission: { electionId },
+          voteSubmission: { onchainElectionId: electionId },
         },
         select: { candidateKeys: true },
       }),
     ]);
 
+    const candidates = onchainElection?.draft?.electionCandidates ?? [];
     const counts = new Map<string, number>();
     for (const candidate of candidates) {
       counts.set(candidate.candidateKey, 0);
@@ -48,7 +60,7 @@ export class LiveTallyService {
     }
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.liveTally.deleteMany({ where: { electionId } });
+      await tx.liveTally.deleteMany({ where: { onchainElectionId: electionId } });
 
       if (counts.size === 0) {
         return;
@@ -56,12 +68,14 @@ export class LiveTallyService {
 
       await tx.liveTally.createMany({
         data: Array.from(counts.entries()).map(([candidateKey, count]) => ({
-          electionId,
+          onchainElectionId: electionId,
           candidateKey,
           count,
         })),
       });
     });
+
+    await this.resultSummariesService.recomputeForElection(electionId);
 
     return this.findAll({ electionId: electionId.toString() });
   }
@@ -69,9 +83,9 @@ export class LiveTallyService {
   findAll(query: { electionId?: string }) {
     return this.prisma.liveTally.findMany({
       where: {
-        electionId: toOptionalBigInt(query.electionId),
+        onchainElectionId: toOptionalBigInt(query.electionId),
       },
-      orderBy: [{ electionId: 'asc' }, { candidateKey: 'asc' }],
+      orderBy: [{ onchainElectionId: 'asc' }, { candidateKey: 'asc' }],
     });
   }
 
@@ -83,13 +97,13 @@ export class LiveTallyService {
     const electionId = BigInt(data.electionId);
     return this.prisma.liveTally.upsert({
       where: {
-        electionId_candidateKey: {
-          electionId,
+        onchainElectionId_candidateKey: {
+          onchainElectionId: electionId,
           candidateKey: data.candidateKey,
         },
       },
       create: {
-        electionId,
+        onchainElectionId: electionId,
         candidateKey: data.candidateKey,
         count: data.count,
       },

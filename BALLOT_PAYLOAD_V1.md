@@ -133,8 +133,8 @@ canonical payload를 먼저 serialize하고, 그 결과를 암호화한다.
 
 ```json
 {
-  "algorithm": "rsa-oaep-aes-256-gcm",
-  "encryptedKey": "<base64>",
+  "algorithm": "ecdh-p256-aes-256-gcm",
+  "ephemeralPublicKey": "<base64>",
   "iv": "<base64>",
   "authTag": "<base64>",
   "ciphertext": "<base64>"
@@ -143,14 +143,20 @@ canonical payload를 먼저 serialize하고, 그 결과를 암호화한다.
 
 의미:
 
-- `encryptedKey`
-  - ballot payload를 암호화한 AES 대칭키를 election public key로 RSA-OAEP 암호화한 값
+- `ephemeralPublicKey`
+  - ballot마다 새로 생성한 ephemeral `P-256` 공개키의 SPKI DER bytes를 base64로 담은 값
 - `iv`
   - AES-256-GCM IV
 - `authTag`
   - AES-256-GCM authentication tag
 - `ciphertext`
   - canonical payload plaintext를 AES-256-GCM으로 암호화한 값
+
+복호화 흐름:
+
+- 프론트는 election 공개키와 ballot용 ephemeral private key로 ECDH shared secret을 만든다
+- 그 shared secret을 `SHA-256`으로 해시해 AES-256-GCM 키를 만든다
+- 백엔드는 저장된 election private key와 `ephemeralPublicKey`로 같은 shared secret을 만들고 복호화한다
 
 백엔드는 온체인 `encryptedBallot`이:
 

@@ -12,14 +12,21 @@ enum VerifiedOrganizerStatus {
   REJECTED
 }
 
-enum PrivateElectionState {
+enum ElectionSyncState {
   PREPARED
-  ONCHAIN_PENDING
-  ACTIVE
-  FINALIZED
-  CANCELLED
+  INDEXED
   EXPIRED
   FAILED
+}
+
+enum OnchainElectionState {
+  SCHEDULED
+  ACTIVE
+  CLOSED
+  KEY_REVEAL_PENDING
+  KEY_REVEALED
+  FINALIZED
+  CANCELLED
 }
 
 enum VisibilityMode {
@@ -64,57 +71,88 @@ model VerifiedOrganizer {
   @@map("verified_organizers")
 }
 
-model ElectionGroup {
+model ElectionSeries {
   id              BigInt     @id @default(autoincrement())
-  groupKey        String     @unique @map("group_key")
+  seriesKey       String     @unique @map("series_key")
   onchainSeriesId String?    @unique @map("onchain_series_id")
+  coverImageUrl   String?    @map("cover_image_url")
   createdAt       DateTime   @default(now()) @map("created_at")
   updatedAt       DateTime   @updatedAt @map("updated_at")
-  elections       Election[]
+  electionDrafts  ElectionDraft[]
 
-  @@map("election_groups")
+  @@map("election_series")
 }
 
-model Election {
+model ElectionDraft {
   id                         BigInt               @id @default(autoincrement())
-  groupId                    BigInt               @map("group_id")
-  onchainElectionId          String?              @unique @map("onchain_election_id")
-  onchainElectionAddress     String?              @unique @map("onchain_election_address")
+  seriesId                   BigInt               @map("series_id")
   title                      String
+  coverImageUrl              String?              @map("cover_image_url")
   candidateManifestPreimage  Json                 @map("candidate_manifest_preimage")
-  organizerWalletAddress     String?              @map("organizer_wallet_address")
-  organizerVerifiedSnapshot  Boolean?             @map("organizer_verified_snapshot")
   visibilityMode             VisibilityMode       @default(PRIVATE) @map("visibility_mode")
-  paymentMode                PaymentMode?         @map("payment_mode")
-  ballotPolicy               BallotPolicy?        @map("ballot_policy")
-  startAt                    DateTime?            @map("start_at")
-  endAt                      DateTime?            @map("end_at")
-  resultRevealAt             DateTime?            @map("result_reveal_at")
-  minKarmaTier               Int?                 @map("min_karma_tier")
-  resetIntervalSeconds       Int?                 @map("reset_interval_seconds")
-  allowMultipleChoice        Boolean?             @map("allow_multiple_choice")
-  maxSelectionsPerSubmission Int?                 @map("max_selections_per_submission")
-  timezoneWindowOffset       Int?                 @map("timezone_window_offset")
-  paymentToken               String?              @map("payment_token")
-  costPerBallot              String?              @map("cost_per_ballot")
-  state                      PrivateElectionState
+  syncState                  ElectionSyncState    @map("sync_state")
   createdAt                  DateTime             @default(now()) @map("created_at")
   updatedAt                  DateTime             @updatedAt @map("updated_at")
-  group                      ElectionGroup        @relation(fields: [groupId], references: [id])
+  series                     ElectionSeries       @relation(fields: [seriesId], references: [id])
   electionKey                ElectionKey?
   electionCandidates         ElectionCandidate[]
+  onchainElection            OnchainElection?
+
+  @@index([seriesId])
+  @@map("election_drafts")
+}
+
+model OnchainElection {
+  id                         BigInt                @id @default(autoincrement())
+  draftId                    BigInt?               @unique @map("draft_id")
+  onchainSeriesId            String?               @map("onchain_series_id")
+  onchainElectionId          String                @unique @map("onchain_election_id")
+  onchainElectionAddress     String                @unique @map("onchain_election_address")
+  organizerWalletAddress     String                @map("organizer_wallet_address")
+  organizerVerifiedSnapshot  Boolean               @map("organizer_verified_snapshot")
+  visibilityMode             VisibilityMode        @map("visibility_mode")
+  paymentMode                PaymentMode           @map("payment_mode")
+  ballotPolicy               BallotPolicy          @map("ballot_policy")
+  startAt                    DateTime              @map("start_at")
+  endAt                      DateTime              @map("end_at")
+  resultRevealAt             DateTime              @map("result_reveal_at")
+  minKarmaTier               Int                   @map("min_karma_tier")
+  resetIntervalSeconds       Int                   @map("reset_interval_seconds")
+  allowMultipleChoice        Boolean               @map("allow_multiple_choice")
+  maxSelectionsPerSubmission Int                   @map("max_selections_per_submission")
+  timezoneWindowOffset       Int                   @map("timezone_window_offset")
+  paymentToken               String?               @map("payment_token")
+  costPerBallot              String                @map("cost_per_ballot")
+  onchainState               OnchainElectionState  @map("onchain_state")
+  createdAt                  DateTime              @default(now()) @map("created_at")
+  updatedAt                  DateTime              @updatedAt @map("updated_at")
+  draft                      ElectionDraft?        @relation(fields: [draftId], references: [id])
   voteSubmissions            VoteSubmission[]
   liveTally                  LiveTally[]
   finalizedTally             FinalizedTally[]
   resultSummary              ResultSummary?
+  invalidOnchainElection     InvalidOnchainElection?
 
-  @@index([groupId])
-  @@map("elections")
+  @@index([draftId])
+  @@map("onchain_elections")
+}
+
+model InvalidOnchainElection {
+  id                BigInt          @id @default(autoincrement())
+  onchainElectionId BigInt          @unique @map("onchain_election_id_ref")
+  reasonCode        String          @map("reason_code")
+  reasonDetail      String?         @map("reason_detail")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+  onchainElection   OnchainElection @relation(fields: [onchainElectionId], references: [id])
+
+  @@index([reasonCode])
+  @@map("invalid_onchain_elections")
 }
 
 model ElectionKey {
   id                       BigInt    @id @default(autoincrement())
-  electionId               BigInt?   @unique @map("election_id")
+  draftId                  BigInt?   @unique @map("draft_id")
   publicKey                String    @map("public_key")
   privateKeyCommitmentHash String    @unique @map("private_key_commitment_hash")
   privateKeyEncrypted      String    @map("private_key_encrypted")
@@ -122,38 +160,39 @@ model ElectionKey {
   revealedAt               DateTime? @map("revealed_at")
   createdAt                DateTime  @default(now()) @map("created_at")
   updatedAt                DateTime  @updatedAt @map("updated_at")
-  election                 Election? @relation(fields: [electionId], references: [id])
+  draft                    ElectionDraft? @relation(fields: [draftId], references: [id])
 
   @@map("election_keys")
 }
 
 model ElectionCandidate {
   id           BigInt   @id @default(autoincrement())
-  electionId   BigInt   @map("election_id")
+  draftId      BigInt   @map("draft_id")
   candidateKey String   @map("candidate_key")
+  imageUrl     String?  @map("image_url")
   displayOrder Int      @map("display_order")
   createdAt    DateTime @default(now()) @map("created_at")
-  election     Election @relation(fields: [electionId], references: [id])
+  draft        ElectionDraft @relation(fields: [draftId], references: [id])
 
-  @@unique([electionId, candidateKey])
-  @@index([electionId, displayOrder])
+  @@unique([draftId, candidateKey])
+  @@index([draftId, displayOrder])
   @@map("election_candidates")
 }
 
 model VoteSubmission {
   id              BigInt           @id @default(autoincrement())
-  electionId      BigInt           @map("election_id")
+  onchainElectionId BigInt         @map("onchain_election_id_ref")
   onchainTxHash   String           @unique @map("onchain_tx_hash")
   voterAddress    String           @map("voter_address")
   blockNumber     Int              @map("block_number")
   blockTimestamp  DateTime         @map("block_timestamp")
   encryptedBallot String           @map("encrypted_ballot")
   createdAt       DateTime         @default(now()) @map("created_at")
-  election        Election         @relation(fields: [electionId], references: [id])
+  onchainElection OnchainElection  @relation(fields: [onchainElectionId], references: [id])
   decryptedBallot DecryptedBallot?
   invalidBallots  InvalidBallot[]
 
-  @@index([electionId, blockNumber])
+  @@index([onchainElectionId, blockNumber])
   @@index([voterAddress])
   @@map("vote_submissions")
 }
@@ -187,38 +226,38 @@ model InvalidBallot {
 
 model LiveTally {
   id           BigInt   @id @default(autoincrement())
-  electionId   BigInt   @map("election_id")
+  onchainElectionId BigInt   @map("onchain_election_id_ref")
   candidateKey String   @map("candidate_key")
   count        Int
   updatedAt    DateTime @updatedAt @map("updated_at")
-  election     Election @relation(fields: [electionId], references: [id])
+  onchainElection OnchainElection @relation(fields: [onchainElectionId], references: [id])
 
-  @@unique([electionId, candidateKey])
+  @@unique([onchainElectionId, candidateKey])
   @@map("live_tally")
 }
 
 model FinalizedTally {
   id           BigInt   @id @default(autoincrement())
-  electionId   BigInt   @map("election_id")
+  onchainElectionId BigInt   @map("onchain_election_id_ref")
   candidateKey String   @map("candidate_key")
   count        Int
   voteRatio    Float    @map("vote_ratio")
   finalizedAt  DateTime @map("finalized_at")
-  election     Election @relation(fields: [electionId], references: [id])
+  onchainElection OnchainElection @relation(fields: [onchainElectionId], references: [id])
 
-  @@unique([electionId, candidateKey])
+  @@unique([onchainElectionId, candidateKey])
   @@map("finalized_tally")
 }
 
 model ResultSummary {
   id                    BigInt   @id @default(autoincrement())
-  electionId            BigInt   @unique @map("election_id")
+  onchainElectionId     BigInt   @unique @map("onchain_election_id_ref")
   totalSubmissions      Int      @map("total_submissions")
   totalDecryptedBallots Int      @map("total_decrypted_ballots")
   totalValidVotes       Int      @map("total_valid_votes")
   totalInvalidVotes     Int      @map("total_invalid_votes")
   createdAt             DateTime @default(now()) @map("created_at")
-  election              Election @relation(fields: [electionId], references: [id])
+  onchainElection       OnchainElection @relation(fields: [onchainElectionId], references: [id])
 
   @@map("result_summaries")
 }

@@ -3,7 +3,8 @@ import { toOptionalBigInt } from '../../common/utils/query.utils';
 import { PrismaService } from '../../prisma/prisma.service';
 
 type CreateElectionCandidateDto = {
-  electionId: string | bigint;
+  draftId?: string | bigint;
+  electionId?: string | bigint;
   candidateKey: string;
   displayOrder: number;
 };
@@ -17,9 +18,9 @@ export class ElectionCandidatesService {
   findAll(query: { electionId?: string }) {
     return this.prisma.electionCandidate.findMany({
       where: {
-        electionId: toOptionalBigInt(query.electionId),
+        draftId: toOptionalBigInt(query.electionId),
       },
-      orderBy: [{ electionId: 'asc' }, { displayOrder: 'asc' }],
+      orderBy: [{ draftId: 'asc' }, { displayOrder: 'asc' }],
     });
   }
 
@@ -32,7 +33,7 @@ export class ElectionCandidatesService {
   create(data: CreateElectionCandidateDto) {
     return this.prisma.electionCandidate.create({
       data: {
-        electionId: BigInt(data.electionId),
+        draftId: BigInt(data.draftId ?? data.electionId!),
         candidateKey: data.candidateKey,
         displayOrder: data.displayOrder,
       },
@@ -43,12 +44,13 @@ export class ElectionCandidatesService {
     return this.prisma.electionCandidate.update({
       where: { id },
       data: {
-        electionId:
-          data.electionId === undefined ? undefined : BigInt(data.electionId),
+        draftId:
+          data.draftId === undefined && data.electionId === undefined
+            ? undefined
+            : BigInt(data.draftId ?? data.electionId!),
         candidateKey: data.candidateKey,
         displayOrder: data.displayOrder,
       },
     });
   }
 }
-
