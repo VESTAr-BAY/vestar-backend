@@ -503,42 +503,51 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
 
     const commitmentHash = config.privateKeyCommitmentHash as `0x${string}`;
 
-    if (commitmentHash.toLowerCase() === ZERO_BYTES32) {
-      return;
-    }
+    const electionKey =
+      commitmentHash.toLowerCase() === ZERO_BYTES32
+        ? null
+        : await this.prisma.electionKey.findUnique({
+            where: { privateKeyCommitmentHash: commitmentHash },
+            include: { draft: true },
+          });
 
-    const electionKey = await this.prisma.electionKey.findUnique({
-      where: { privateKeyCommitmentHash: commitmentHash },
-      include: { draft: true },
-    });
-
-    if (!electionKey?.draft) {
-      return;
-    }
-
-    const draft = electionKey.draft;
+    const draft = electionKey?.draft ?? null;
 
     const nextOnchainState = this.mapOnchainStateToDbState(Number(onchainState));
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.electionSeries.update({
-        where: { id: draft.seriesId },
-        data: { onchainSeriesId: seriesId },
-      });
+      if (draft) {
+        await tx.electionSeries.update({
+          where: { id: draft.seriesId },
+          data: { onchainSeriesId: seriesId },
+        });
+      } else {
+        await tx.electionSeries.upsert({
+          where: { onchainSeriesId: seriesId },
+          create: {
+            seriesKey: `[NA] ${seriesId}`,
+            onchainSeriesId: seriesId,
+          },
+          update: {},
+        });
+      }
 
-      await tx.electionDraft.update({
-        where: { id: draft.id },
-        data: {
-          syncState: ElectionSyncState.INDEXED,
-        },
-      });
+      if (draft) {
+        await tx.electionDraft.update({
+          where: { id: draft.id },
+          data: {
+            syncState: ElectionSyncState.INDEXED,
+          },
+          });
+      }
 
-      await tx.onchainElection.upsert({
+      const onchainElection = await tx.onchainElection.upsert({
         where: {
           onchainElectionId: electionId as string,
         },
         create: {
-          draftId: draft.id,
+          draftId: draft?.id ?? null,
+          onchainSeriesId: onchainSeriesId as string,
           onchainElectionId: electionId as string,
           onchainElectionAddress: electionAddress,
           organizerWalletAddress: organizer as string,
@@ -562,7 +571,8 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
           onchainState: nextOnchainState,
         },
         update: {
-          draftId: draft.id,
+          draftId: draft ? draft.id : undefined,
+          onchainSeriesId: onchainSeriesId as string,
           onchainElectionAddress: electionAddress,
           organizerWalletAddress: organizer as string,
           organizerVerifiedSnapshot: organizerVerifiedSnapshot as boolean,
@@ -585,6 +595,39 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
           onchainState: nextOnchainState,
         },
       });
+
+      if (draft) {
+        await tx.$executeRaw(
+          Prisma.sql`
+            DELETE FROM "invalid_onchain_elections"
+            WHERE "onchain_election_id_ref" = ${onchainElection.id}
+          `,
+        );
+      } else {
+        await tx.$executeRaw(
+          Prisma.sql`
+            INSERT INTO "invalid_onchain_elections" (
+              "onchain_election_id_ref",
+              "reason_code",
+              "reason_detail",
+              "created_at",
+              "updated_at"
+            )
+            VALUES (
+              ${onchainElection.id},
+              ${'MISSING_DRAFT_MAPPING'},
+              ${`No prepared draft matched commitment hash ${commitmentHash}`},
+              NOW(),
+              NOW()
+            )
+            ON CONFLICT ("onchain_election_id_ref")
+            DO UPDATE SET
+              "reason_code" = EXCLUDED."reason_code",
+              "reason_detail" = EXCLUDED."reason_detail",
+              "updated_at" = NOW()
+          `,
+        );
+      }
     });
 
     if (nextOnchainState === OnchainElectionState.FINALIZED) {

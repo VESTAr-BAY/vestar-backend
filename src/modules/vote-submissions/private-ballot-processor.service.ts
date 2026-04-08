@@ -77,9 +77,47 @@ export class PrivateBallotProcessorService {
     }
 
     if (!submission.onchainElection.draft?.electionKey) {
-      throw new Error(
-        `Draft for on-chain election ${submission.onchainElectionId.toString()} has no election key`,
-      );
+      const processedSubmission = await this.prisma.$transaction(async (tx) => {
+        await tx.invalidBallot.deleteMany({
+          where: { voteSubmissionId: submission.id },
+        });
+
+        if (submission.decryptedBallot) {
+          await tx.decryptedBallot.delete({
+            where: { voteSubmissionId: submission.id },
+          });
+        }
+
+        await tx.decryptedBallot.create({
+          data: {
+            voteSubmissionId: submission.id,
+            candidateKeys: [] as never,
+            nonce: '',
+            isValid: false,
+            validatedAt: new Date(),
+          },
+        });
+
+        await tx.invalidBallot.create({
+          data: {
+            voteSubmissionId: submission.id,
+            reasonCode: 'MISSING_ELECTION_KEY',
+            reasonDetail: `On-chain election ${submission.onchainElectionId.toString()} is not linked to a decryptable election key`,
+          },
+        });
+
+        return tx.voteSubmission.findUnique({
+          where: { id: submission.id },
+          include: {
+            decryptedBallot: true,
+            invalidBallots: true,
+          },
+        });
+      });
+
+      await this.liveTallyService.recomputeForElection(submission.onchainElection.id);
+
+      return processedSubmission;
     }
 
     const validation = await this.validateEncryptedSubmission({

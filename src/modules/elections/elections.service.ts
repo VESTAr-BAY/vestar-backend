@@ -13,6 +13,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 type CreateElectionDto = {
   draftId?: string | bigint | null;
+  onchainSeriesId?: string | null;
   onchainElectionId: string;
   onchainElectionAddress: string;
   organizerWalletAddress: string;
@@ -49,6 +50,7 @@ export class ElectionsService {
     return {
       id: onchainElection.id,
       draftId: onchainElection.draftId,
+      onchainSeriesId: onchainElection.onchainSeriesId,
       onchainElectionId: onchainElection.onchainElectionId,
       onchainElectionAddress: onchainElection.onchainElectionAddress,
       title: draft?.title ?? null,
@@ -81,6 +83,7 @@ export class ElectionsService {
     return {
       id: onchainElection.id,
       draftId: onchainElection.draftId,
+      onchainSeriesId: onchainElection.onchainSeriesId,
       onchainElectionId: onchainElection.onchainElectionId,
       onchainElectionAddress: onchainElection.onchainElectionAddress,
       organizerWalletAddress: onchainElection.organizerWalletAddress,
@@ -278,6 +281,7 @@ export class ElectionsService {
         data.draftId === undefined || data.draftId === null
           ? null
           : BigInt(data.draftId),
+      onchainSeriesId: data.onchainSeriesId ?? null,
       onchainElectionId: data.onchainElectionId,
       onchainElectionAddress: data.onchainElectionAddress,
       organizerWalletAddress: data.organizerWalletAddress,
@@ -311,6 +315,8 @@ export class ElectionsService {
           : data.draftId === null
             ? null
             : BigInt(data.draftId),
+      onchainSeriesId:
+        data.onchainSeriesId === undefined ? undefined : data.onchainSeriesId,
       onchainElectionId: data.onchainElectionId,
       onchainElectionAddress: data.onchainElectionAddress,
       organizerWalletAddress: data.organizerWalletAddress,

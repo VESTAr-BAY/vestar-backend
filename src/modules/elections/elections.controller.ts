@@ -68,6 +68,7 @@ export class ElectionsController {
     @Body()
     body: {
       draftId?: string | null;
+      onchainSeriesId?: string | null;
       onchainElectionId: string;
       onchainElectionAddress: string;
       organizerWalletAddress: string;
@@ -97,6 +98,7 @@ export class ElectionsController {
     @Body()
     body: Partial<{
       draftId?: string | null;
+      onchainSeriesId?: string | null;
       onchainElectionId: string;
       onchainElectionAddress: string;
       organizerWalletAddress: string;

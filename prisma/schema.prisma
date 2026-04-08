@@ -105,6 +105,7 @@ model ElectionDraft {
 model OnchainElection {
   id                         BigInt                @id @default(autoincrement())
   draftId                    BigInt?               @unique @map("draft_id")
+  onchainSeriesId            String?               @map("onchain_series_id")
   onchainElectionId          String                @unique @map("onchain_election_id")
   onchainElectionAddress     String                @unique @map("onchain_election_address")
   organizerWalletAddress     String                @map("organizer_wallet_address")
@@ -130,9 +131,23 @@ model OnchainElection {
   liveTally                  LiveTally[]
   finalizedTally             FinalizedTally[]
   resultSummary              ResultSummary?
+  invalidOnchainElection     InvalidOnchainElection?
 
   @@index([draftId])
   @@map("onchain_elections")
+}
+
+model InvalidOnchainElection {
+  id                BigInt          @id @default(autoincrement())
+  onchainElectionId BigInt          @unique @map("onchain_election_id_ref")
+  reasonCode        String          @map("reason_code")
+  reasonDetail      String?         @map("reason_detail")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+  onchainElection   OnchainElection @relation(fields: [onchainElectionId], references: [id])
+
+  @@index([reasonCode])
+  @@map("invalid_onchain_elections")
 }
 
 model ElectionKey {
