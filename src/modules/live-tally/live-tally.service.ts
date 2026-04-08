@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { VisibilityMode } from '@prisma/client';
 import { toOptionalBigInt } from '../../common/utils/query.utils';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ResultSummariesService } from '../result-summaries/result-summaries.service';
@@ -18,27 +19,18 @@ export class LiveTallyService {
 
   async recomputeForElection(electionIdInput: string | bigint) {
     const electionId = BigInt(electionIdInput);
-    const [onchainElection, validBallots] = await Promise.all([
-      this.prisma.onchainElection.findUnique({
-        where: { id: electionId },
-        include: {
-          draft: {
-            include: {
-              electionCandidates: {
-                orderBy: { displayOrder: 'asc' },
-              },
+    const onchainElection = await this.prisma.onchainElection.findUnique({
+      where: { id: electionId },
+      include: {
+        draft: {
+          include: {
+            electionCandidates: {
+              orderBy: { displayOrder: 'asc' },
             },
           },
         },
-      }),
-      this.prisma.decryptedBallot.findMany({
-        where: {
-          isValid: true,
-          voteSubmission: { onchainElectionId: electionId },
-        },
-        select: { candidateKeys: true },
-      }),
-    ]);
+      },
+    });
 
     const candidates = onchainElection?.draft?.electionCandidates ?? [];
     const counts = new Map<string, number>();
@@ -46,16 +38,44 @@ export class LiveTallyService {
       counts.set(candidate.candidateKey, 0);
     }
 
-    for (const ballot of validBallots) {
-      const candidateKeys = Array.isArray(ballot.candidateKeys)
-        ? ballot.candidateKeys.filter(
-            (candidateKey): candidateKey is string =>
-              typeof candidateKey === 'string',
-          )
-        : [];
+    if (onchainElection?.visibilityMode === VisibilityMode.OPEN) {
+      const openSubmissions = await this.prisma.openVoteSubmission.findMany({
+        where: { onchainElectionId: electionId },
+        select: { candidateKeys: true },
+      });
 
-      for (const candidateKey of candidateKeys) {
-        counts.set(candidateKey, (counts.get(candidateKey) ?? 0) + 1);
+      for (const submission of openSubmissions) {
+        const candidateKeys = Array.isArray(submission.candidateKeys)
+          ? submission.candidateKeys.filter(
+              (candidateKey): candidateKey is string =>
+                typeof candidateKey === 'string',
+            )
+          : [];
+
+        for (const candidateKey of candidateKeys) {
+          counts.set(candidateKey, (counts.get(candidateKey) ?? 0) + 1);
+        }
+      }
+    } else {
+      const validBallots = await this.prisma.decryptedBallot.findMany({
+        where: {
+          isValid: true,
+          voteSubmission: { onchainElectionId: electionId },
+        },
+        select: { candidateKeys: true },
+      });
+
+      for (const ballot of validBallots) {
+        const candidateKeys = Array.isArray(ballot.candidateKeys)
+          ? ballot.candidateKeys.filter(
+              (candidateKey): candidateKey is string =>
+                typeof candidateKey === 'string',
+            )
+          : [];
+
+        for (const candidateKey of candidateKeys) {
+          counts.set(candidateKey, (counts.get(candidateKey) ?? 0) + 1);
+        }
       }
     }
 

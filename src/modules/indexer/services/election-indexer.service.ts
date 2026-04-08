@@ -31,25 +31,44 @@ const privateVoteAbi = parseAbi([
   'function submitEncryptedVote(bytes encryptedBallot)',
 ]);
 
+const openVoteAbi = parseAbi([
+  'event OpenVoteSubmitted(bytes32 indexed electionId, address indexed voter, uint256 selectionCount, bytes32 candidateBatchHash, uint256 ballotsSpent, uint256 paymentAmount)',
+  'function submitOpenVote(string[] candidateKeys)',
+]);
+
 const electionAbi = parseAbi([
   'function electionId() view returns (bytes32)',
   'function seriesId() view returns (bytes32)',
   'function organizer() view returns (address)',
   'function organizerVerifiedSnapshot() view returns (bool)',
   'function state() view returns (uint8)',
-  'function getElectionConfig() view returns ((bytes32 electionId,bytes32 seriesId,uint8 visibilityMode,bytes32 titleHash,bytes32 candidateManifestHash,string candidateManifestURI,uint64 startAt,uint64 endAt,uint64 resultRevealAt,uint8 minKarmaTier,uint8 ballotPolicy,uint64 resetInterval,uint8 paymentMode,uint256 costPerBallot,bool allowMultipleChoice,uint16 maxSelectionsPerSubmission,int32 timezoneWindowOffset,address paymentToken,bytes electionPublicKey,bytes32 privateKeyCommitmentHash,uint16 keySchemeVersion))',
+  'function syncState() returns (uint8)',
+  'function getElectionConfig() view returns ((bytes32 seriesId,uint8 visibilityMode,bytes32 titleHash,bytes32 candidateManifestHash,string candidateManifestURI,uint64 startAt,uint64 endAt,uint64 resultRevealAt,uint8 minKarmaTier,uint8 ballotPolicy,uint64 resetInterval,uint8 paymentMode,uint256 costPerBallot,bool allowMultipleChoice,uint16 maxSelectionsPerSubmission,int32 timezoneWindowOffset,address paymentToken,bytes electionPublicKey,bytes32 privateKeyCommitmentHash,uint16 keySchemeVersion))',
+  'event ResultFinalized(bytes32 indexed electionId, bytes32 indexed resultManifestHash, string resultManifestURI)',
+]);
+
+const resultFinalizedAbi = parseAbi([
+  'event ResultFinalized(bytes32 indexed electionId, bytes32 indexed resultManifestHash, string resultManifestURI)',
 ]);
 
 const ZERO_BYTES32 = `0x${'0'.repeat(64)}` as const;
+const syncableStateSnapshots: OnchainElectionState[] = [
+  OnchainElectionState.SCHEDULED,
+  OnchainElectionState.ACTIVE,
+  OnchainElectionState.CLOSED,
+  OnchainElectionState.KEY_REVEAL_PENDING,
+];
 
 @Injectable()
 export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ElectionIndexerService.name);
   private readonly electionCursorKey = 'factory-election-created';
   private readonly voteCursorKey = 'private-vote-submitted';
+  private readonly openVoteCursorKey = 'open-vote-submitted';
   private timer: NodeJS.Timeout | null = null;
   private currentElectionFromBlock: bigint | null = null;
   private currentVoteFromBlock: bigint | null = null;
+  private currentOpenVoteFromBlock: bigint | null = null;
 
   constructor(
     private readonly prisma: AppPrismaService,
@@ -84,9 +103,10 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
 
   private async initializeCursorAndPoll() {
     const configuredStartBlock = BigInt(process.env.INDEXER_START_BLOCK ?? '0');
-    const [electionCursor, voteCursor] = await Promise.all([
+    const [electionCursor, voteCursor, openVoteCursor] = await Promise.all([
       this.getPersistedCursor(this.electionCursorKey),
       this.getPersistedCursor(this.voteCursorKey),
+      this.getPersistedCursor(this.openVoteCursorKey),
     ]);
 
     this.currentElectionFromBlock = electionCursor
@@ -94,6 +114,9 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
       : configuredStartBlock;
     this.currentVoteFromBlock = voteCursor
       ? BigInt(voteCursor.blockNumber)
+      : configuredStartBlock;
+    this.currentOpenVoteFromBlock = openVoteCursor
+      ? BigInt(openVoteCursor.blockNumber)
       : configuredStartBlock;
 
     await this.pollOnce();
@@ -107,7 +130,8 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
       !rpcUrl ||
       !factoryAddress ||
       this.currentElectionFromBlock === null ||
-      this.currentVoteFromBlock === null
+      this.currentVoteFromBlock === null ||
+      this.currentOpenVoteFromBlock === null
     ) {
       return;
     }
@@ -150,6 +174,20 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
 
         this.currentVoteFromBlock = latestBlock + 1n;
         await this.persistCursor(this.voteCursorKey, this.currentVoteFromBlock);
+      }
+
+      if (this.currentOpenVoteFromBlock <= latestBlock) {
+        await this.indexOpenVoteRange(
+          client,
+          this.currentOpenVoteFromBlock,
+          latestBlock,
+        );
+
+        this.currentOpenVoteFromBlock = latestBlock + 1n;
+        await this.persistCursor(
+          this.openVoteCursorKey,
+          this.currentOpenVoteFromBlock,
+        );
       }
 
       await this.reconcilePreparedElections(client, latestBlock);
@@ -316,6 +354,139 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private async indexOpenVoteRange(
+    client: ReturnType<typeof createPublicClient>,
+    fromBlock: bigint,
+    toBlock: bigint,
+  ) {
+    if (fromBlock > toBlock) {
+      return;
+    }
+
+    const openElections = await this.prisma.onchainElection.findMany({
+      where: {
+        visibilityMode: VisibilityMode.OPEN,
+      },
+      select: {
+        id: true,
+        onchainElectionAddress: true,
+        onchainElectionId: true,
+      },
+    });
+
+    const addresses = openElections
+      .map((election) => election.onchainElectionAddress)
+      .filter((address): address is string => Boolean(address))
+      .map((address) => getAddress(address));
+
+    if (addresses.length === 0) {
+      return;
+    }
+
+    const dbElectionByAddress = new Map(
+      openElections
+        .filter(
+          (
+            election,
+          ): election is typeof election & {
+            onchainElectionAddress: string;
+            onchainElectionId: string;
+          } => Boolean(election.onchainElectionAddress && election.onchainElectionId),
+        )
+        .map((election) => [getAddress(election.onchainElectionAddress), election]),
+    );
+
+    const dbElectionByOnchainId = new Map(
+      openElections
+        .filter(
+          (
+            election,
+          ): election is typeof election & {
+            onchainElectionAddress: string;
+            onchainElectionId: string;
+          } => Boolean(election.onchainElectionAddress && election.onchainElectionId),
+        )
+        .map((election) => [election.onchainElectionId.toLowerCase(), election]),
+    );
+
+    const logs = await client.getLogs({
+      address: addresses,
+      event: openVoteAbi[0],
+      fromBlock,
+      toBlock,
+    });
+
+    for (const log of logs) {
+      if (!log.transactionHash || !log.blockNumber) {
+        continue;
+      }
+
+      const dbElection =
+        dbElectionByAddress.get(log.address) ??
+        (log.args.electionId
+          ? dbElectionByOnchainId.get(
+              (log.args.electionId as string).toLowerCase(),
+            )
+          : undefined);
+
+      if (!dbElection) {
+        this.logger.warn(
+          `Open vote submission election not found for address ${log.address} / electionId ${
+            (log.args.electionId as string | undefined) ?? 'unknown'
+          }`,
+        );
+        continue;
+      }
+
+      const [transaction, block] = await Promise.all([
+        client.getTransaction({ hash: log.transactionHash }),
+        client.getBlock({ blockNumber: log.blockNumber }),
+      ]);
+
+      const decoded = decodeFunctionData({
+        abi: openVoteAbi,
+        data: transaction.input,
+      });
+
+      if (decoded.functionName !== 'submitOpenVote') {
+        continue;
+      }
+
+      const candidateKeys = Array.isArray(decoded.args[0])
+        ? (decoded.args[0] as unknown[]).filter(
+            (candidateKey): candidateKey is string =>
+              typeof candidateKey === 'string',
+          )
+        : [];
+
+      const selectionCount = Number(log.args.selectionCount ?? 0n);
+      if (candidateKeys.length === 0 || candidateKeys.length !== selectionCount) {
+        this.logger.warn(
+          `Open vote submission candidate length mismatch for tx ${log.transactionHash}`,
+        );
+        continue;
+      }
+
+      await this.prisma.openVoteSubmission.upsert({
+        where: { onchainTxHash: log.transactionHash },
+        create: {
+          onchainElectionId: dbElection.id,
+          onchainTxHash: log.transactionHash,
+          voterAddress: transaction.from,
+          blockNumber: Number(log.blockNumber),
+          blockTimestamp: new Date(Number(block.timestamp) * 1000),
+          candidateKeys: candidateKeys as Prisma.InputJsonValue,
+          selectionCount,
+          ballotsSpent: Number(log.args.ballotsSpent ?? 0n),
+          paymentAmount: BigInt(log.args.paymentAmount ?? 0n).toString(),
+        },
+        update: {},
+      });
+
+      await this.liveTallyService.recomputeForElection(dbElection.id);
+    }
+  }
+
   private async persistCursor(cursorKey: string, nextFromBlock: bigint) {
     await this.prisma.$executeRaw`
       INSERT INTO "indexer_cursors" ("key", "block_number", "updated_at")
@@ -414,6 +585,8 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
             OnchainElectionState.ACTIVE,
             OnchainElectionState.CLOSED,
             OnchainElectionState.KEY_REVEAL_PENDING,
+            OnchainElectionState.KEY_REVEALED,
+            OnchainElectionState.FINALIZED,
           ],
         },
       },
@@ -431,24 +604,45 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
       }
 
       try {
-        const nextState = await client.readContract({
+        const nextState = await client.simulateContract({
           address: getAddress(election.onchainElectionAddress),
           abi: electionAbi,
-          functionName: 'state',
+          functionName: 'syncState',
         });
 
-        const mappedState = this.mapOnchainStateToDbState(Number(nextState));
+        const mappedState = this.mapOnchainStateToDbState(
+          Number(nextState.result),
+        );
         if (mappedState === election.onchainState) {
+          if (mappedState === OnchainElectionState.FINALIZED) {
+            await this.ensureFinalizedProjection(
+              client,
+              election.id,
+              getAddress(election.onchainElectionAddress),
+            );
+          }
           continue;
         }
 
         await this.prisma.onchainElection.update({
           where: { id: election.id },
-          data: { onchainState: mappedState },
+          data: {
+            onchainState: mappedState,
+            isStateSyncing: syncableStateSnapshots.includes(mappedState),
+            lastStateSyncRequestedAt: syncableStateSnapshots.includes(
+              mappedState,
+            )
+              ? new Date()
+              : null,
+          },
         });
 
         if (mappedState === OnchainElectionState.FINALIZED) {
-          await this.finalizedTallyService.finalizeForElection(election.id);
+          await this.ensureFinalizedProjection(
+            client,
+            election.id,
+            getAddress(election.onchainElectionAddress),
+          );
         }
       } catch (error) {
         this.logger.warn(
@@ -529,7 +723,7 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
         await tx.electionSeries.upsert({
           where: { onchainSeriesId: seriesId },
           create: {
-            seriesKey: `[NA] ${seriesId}`,
+            seriesPreimage: `[NA] ${seriesId}`,
             onchainSeriesId: seriesId,
           },
           update: {},
@@ -641,9 +835,56 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
       });
 
       if (onchainElection) {
-        await this.finalizedTallyService.finalizeForElection(onchainElection.id);
+        const finalizedAt = await this.getFinalizedAtFromChain(
+          client,
+          electionAddress,
+        );
+        await this.finalizedTallyService.finalizeForElection(
+          onchainElection.id,
+          finalizedAt,
+        );
       }
     }
+  }
+
+  private async getFinalizedAtFromChain(
+    client: ReturnType<typeof createPublicClient>,
+    electionAddress: Address,
+  ): Promise<Date> {
+    const logs = await client.getLogs({
+      address: electionAddress,
+      event: resultFinalizedAbi[0],
+      fromBlock: 0n,
+      toBlock: 'latest',
+    });
+
+    const latestLog = logs[logs.length - 1];
+    if (!latestLog?.blockNumber) {
+      return new Date();
+    }
+
+    const block = await client.getBlock({ blockNumber: latestLog.blockNumber });
+    return new Date(Number(block.timestamp) * 1000);
+  }
+
+  private async ensureFinalizedProjection(
+    client: ReturnType<typeof createPublicClient>,
+    electionDbId: bigint,
+    electionAddress: Address,
+  ) {
+    const existingCount = await this.prisma.finalizedTally.count({
+      where: { onchainElectionId: electionDbId },
+    });
+
+    if (existingCount > 0) {
+      return;
+    }
+
+    const finalizedAt = await this.getFinalizedAtFromChain(client, electionAddress);
+    await this.finalizedTallyService.finalizeForElection(
+      electionDbId,
+      finalizedAt,
+    );
   }
 
   private mapVisibilityMode(value: number): VisibilityMode {

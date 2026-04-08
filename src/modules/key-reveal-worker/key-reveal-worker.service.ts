@@ -165,6 +165,10 @@ export class KeyRevealWorkerService implements OnModuleInit, OnModuleDestroy {
             electionKey.privateKeyEncrypted,
           );
 
+          this.logger.log(
+            `Sending revealPrivateKey for ${election.onchainElectionId} (${electionAddress}) from ${account.address}`,
+          );
+
           const txHash = await walletClient.writeContract({
             address: electionAddress,
             abi: keyRevealAbi,
@@ -173,6 +177,9 @@ export class KeyRevealWorkerService implements OnModuleInit, OnModuleDestroy {
             account,
           });
 
+          this.logger.log(
+            `revealPrivateKey submitted for ${election.onchainElectionId} (${electionAddress}): ${txHash}`,
+          );
           await publicClient.waitForTransactionReceipt({ hash: txHash });
           await this.markElectionKeyAsRevealed(electionKey.id, election.id);
 

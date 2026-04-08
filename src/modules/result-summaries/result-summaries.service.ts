@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { VisibilityMode } from '@prisma/client';
 import { toOptionalBigInt } from '../../common/utils/query.utils';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -16,21 +17,41 @@ export class ResultSummariesService {
 
   async recomputeForElection(electionIdInput: string | bigint) {
     const electionId = BigInt(electionIdInput);
-    const [totalSubmissions, decryptedBallots] = await Promise.all([
-      this.prisma.voteSubmission.count({
-        where: { onchainElectionId: electionId },
-      }),
-      this.prisma.decryptedBallot.findMany({
-        where: {
-          voteSubmission: { onchainElectionId: electionId },
-        },
-        select: { isValid: true },
-      }),
-    ]);
+    const onchainElection = await this.prisma.onchainElection.findUnique({
+      where: { id: electionId },
+      select: { visibilityMode: true },
+    });
 
-    const totalDecryptedBallots = decryptedBallots.length;
-    const totalValidVotes = decryptedBallots.filter((ballot) => ballot.isValid).length;
-    const totalInvalidVotes = totalDecryptedBallots - totalValidVotes;
+    let totalSubmissions = 0;
+    let totalDecryptedBallots = 0;
+    let totalValidVotes = 0;
+    let totalInvalidVotes = 0;
+
+    if (onchainElection?.visibilityMode === VisibilityMode.OPEN) {
+      totalSubmissions = await this.prisma.openVoteSubmission.count({
+        where: { onchainElectionId: electionId },
+      });
+      totalDecryptedBallots = 0;
+      totalValidVotes = totalSubmissions;
+      totalInvalidVotes = 0;
+    } else {
+      const [privateTotalSubmissions, decryptedBallots] = await Promise.all([
+        this.prisma.voteSubmission.count({
+          where: { onchainElectionId: electionId },
+        }),
+        this.prisma.decryptedBallot.findMany({
+          where: {
+            voteSubmission: { onchainElectionId: electionId },
+          },
+          select: { isValid: true },
+        }),
+      ]);
+
+      totalSubmissions = privateTotalSubmissions;
+      totalDecryptedBallots = decryptedBallots.length;
+      totalValidVotes = decryptedBallots.filter((ballot) => ballot.isValid).length;
+      totalInvalidVotes = totalDecryptedBallots - totalValidVotes;
+    }
 
     return this.upsert({
       electionId,

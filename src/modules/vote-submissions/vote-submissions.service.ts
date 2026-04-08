@@ -44,7 +44,7 @@ export class VoteSubmissionsService {
                 series: {
                   select: {
                     id: true,
-                    seriesKey: true,
+                    seriesPreimage: true,
                   },
                 },
               },
@@ -74,7 +74,7 @@ export class VoteSubmissionsService {
                 series: {
                   select: {
                     id: true,
-                    seriesKey: true,
+                    seriesPreimage: true,
                   },
                 },
               },

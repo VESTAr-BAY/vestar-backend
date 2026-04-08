@@ -17,14 +17,14 @@ export class ElectionGroupsController {
   }
 
   @Post()
-  create(@Body() body: { seriesKey: string; onchainSeriesId?: string | null }) {
+  create(@Body() body: { seriesPreimage: string; onchainSeriesId?: string | null }) {
     return this.electionGroupsService.create(body);
   }
 
   @Patch(':id')
   update(
     @Param('id', ParseBigIntPipe) id: bigint,
-    @Body() body: Partial<{ seriesKey: string; onchainSeriesId?: string | null }>,
+    @Body() body: Partial<{ seriesPreimage: string; onchainSeriesId?: string | null }>,
   ) {
     return this.electionGroupsService.update(id, body);
   }

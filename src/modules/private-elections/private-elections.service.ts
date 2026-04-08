@@ -12,26 +12,14 @@ import {
 } from 'node:crypto';
 import { keccak256, toHex } from 'viem';
 import { PrismaService } from '../../prisma/prisma.service';
-
-type CandidateInput = {
-  candidateKey: string;
-  displayOrder: number;
-  imageUrl?: string | null;
-};
+import {
+  PreparePrivateElectionCandidateDto,
+  PreparePrivateElectionDto,
+} from './dto/prepare-private-election.dto';
 
 type CandidateManifestHashInput = {
   candidateKey: string;
   displayOrder: number;
-};
-
-type PreparePrivateElectionDto = {
-  seriesKey: string;
-  seriesCoverImageUrl?: string | null;
-  title: string;
-  coverImageUrl?: string | null;
-  candidateManifestPreimage: {
-    candidates: CandidateInput[];
-  };
 };
 
 const PRIVATE_ELECTION_KEY_SCHEME_VERSION = 1;
@@ -47,7 +35,7 @@ export class PrivateElectionsService {
     const normalizedManifest = this.normalizeCandidateManifestForHash(
       data.candidateManifestPreimage,
     );
-    const seriesIdHash = this.hashString(data.seriesKey);
+    const seriesIdHash = this.hashString(data.seriesPreimage);
     const titleHash = this.hashString(data.title);
     const candidateManifestHash = this.hashJson(normalizedManifest);
     const { publicKeyPem, privateKeyPem } = this.generateKeyPair();
@@ -57,8 +45,8 @@ export class PrivateElectionsService {
     await this.prisma.$transaction(async (tx) => {
       await tx.electionSeries.createMany({
         data: [
-          {
-            seriesKey: data.seriesKey,
+            {
+            seriesPreimage: data.seriesPreimage,
             coverImageUrl: data.seriesCoverImageUrl ?? null,
           },
         ],
@@ -66,11 +54,13 @@ export class PrivateElectionsService {
       });
 
       const series = await tx.electionSeries.findUnique({
-        where: { seriesKey: data.seriesKey },
+        where: { seriesPreimage: data.seriesPreimage },
       });
 
       if (!series) {
-        throw new Error(`Failed to resolve election series for key: ${data.seriesKey}`);
+        throw new Error(
+          `Failed to resolve election series for preimage: ${data.seriesPreimage}`,
+        );
       }
 
       if (data.seriesCoverImageUrl !== undefined) {
@@ -131,9 +121,9 @@ export class PrivateElectionsService {
   }
 
   private normalizeCandidatesForStorage(manifest: {
-    candidates: CandidateInput[];
+    candidates: PreparePrivateElectionCandidateDto[];
   }): {
-    candidates: CandidateInput[];
+    candidates: PreparePrivateElectionCandidateDto[];
   } {
     return {
       candidates: [...manifest.candidates]
@@ -147,7 +137,7 @@ export class PrivateElectionsService {
   }
 
   private normalizeCandidateManifestForHash(manifest: {
-    candidates: CandidateInput[];
+    candidates: PreparePrivateElectionCandidateDto[];
   }): {
     candidates: CandidateManifestHashInput[];
   } {
