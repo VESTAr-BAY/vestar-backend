@@ -12,6 +12,7 @@ import { KeyRevealWorkerModule } from './modules/key-reveal-worker/key-reveal-wo
 import { LiveTallyModule } from './modules/live-tally/live-tally.module';
 import { PrivateElectionsModule } from './modules/private-elections/private-elections.module';
 import { ResultSummariesModule } from './modules/result-summaries/result-summaries.module';
+import { StateSyncWorkerModule } from './modules/state-sync-worker/state-sync-worker.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { VerifiedOrganizersModule } from './modules/verified-organizers/verified-organizers.module';
 import { VoteSubmissionsModule } from './modules/vote-submissions/vote-submissions.module';
@@ -34,6 +35,7 @@ import { PrismaModule } from './prisma/prisma.module';
     LiveTallyModule,
     FinalizedTallyModule,
     ResultSummariesModule,
+    StateSyncWorkerModule,
     PrivateElectionsModule,
     UploadsModule,
   ],

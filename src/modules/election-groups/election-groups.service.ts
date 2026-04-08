@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 type CreateElectionGroupDto = {
-  seriesKey: string;
+  seriesPreimage: string;
   onchainSeriesId?: string | null;
 };
 

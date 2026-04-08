@@ -1,4 +1,6 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, UsePipes } from '@nestjs/common';
+import { PreparePrivateElectionDto } from './dto/prepare-private-election.dto';
+import { PreparePrivateElectionPipe } from './pipes/prepare-private-election.pipe';
 import { PrivateElectionsService } from './private-elections.service';
 
 @Controller('private-elections')
@@ -8,21 +10,9 @@ export class PrivateElectionsController {
   ) {}
 
   @Post('prepare')
+  @UsePipes(PreparePrivateElectionPipe)
   prepare(
-    @Body()
-    body: {
-      seriesKey: string;
-      seriesCoverImageUrl?: string | null;
-      title: string;
-      coverImageUrl?: string | null;
-      candidateManifestPreimage: {
-        candidates: Array<{
-          candidateKey: string;
-          displayOrder: number;
-          imageUrl?: string | null;
-        }>;
-      };
-    },
+    @Body() body: PreparePrivateElectionDto,
   ) {
     return this.privateElectionsService.prepare(body);
   }

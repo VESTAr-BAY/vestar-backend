@@ -73,7 +73,7 @@ model VerifiedOrganizer {
 
 model ElectionSeries {
   id              BigInt     @id @default(autoincrement())
-  seriesKey       String     @unique @map("series_key")
+  seriesPreimage  String     @unique @map("series_preimage")
   onchainSeriesId String?    @unique @map("onchain_series_id")
   coverImageUrl   String?    @map("cover_image_url")
   createdAt       DateTime   @default(now()) @map("created_at")
@@ -124,9 +124,13 @@ model OnchainElection {
   paymentToken               String?               @map("payment_token")
   costPerBallot              String                @map("cost_per_ballot")
   onchainState               OnchainElectionState  @map("onchain_state")
+  isStateSyncing             Boolean               @default(false) @map("is_state_syncing")
+  lastStateSyncRequestedAt   DateTime?             @map("last_state_sync_requested_at")
+  lastStateSyncTxHash        String?               @map("last_state_sync_tx_hash")
   createdAt                  DateTime              @default(now()) @map("created_at")
   updatedAt                  DateTime              @updatedAt @map("updated_at")
   draft                      ElectionDraft?        @relation(fields: [draftId], references: [id])
+  openVoteSubmissions        OpenVoteSubmission[]
   voteSubmissions            VoteSubmission[]
   liveTally                  LiveTally[]
   finalizedTally             FinalizedTally[]
@@ -135,6 +139,25 @@ model OnchainElection {
 
   @@index([draftId])
   @@map("onchain_elections")
+}
+
+model OpenVoteSubmission {
+  id                BigInt          @id @default(autoincrement())
+  onchainElectionId BigInt          @map("onchain_election_id_ref")
+  onchainTxHash     String          @unique @map("onchain_tx_hash")
+  voterAddress      String          @map("voter_address")
+  blockNumber       Int             @map("block_number")
+  blockTimestamp    DateTime        @map("block_timestamp")
+  candidateKeys     Json            @map("candidate_keys")
+  selectionCount    Int             @map("selection_count")
+  ballotsSpent      Int             @map("ballots_spent")
+  paymentAmount     String          @map("payment_amount")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  onchainElection   OnchainElection @relation(fields: [onchainElectionId], references: [id])
+
+  @@index([onchainElectionId, blockNumber])
+  @@index([voterAddress])
+  @@map("open_vote_submissions")
 }
 
 model InvalidOnchainElection {
