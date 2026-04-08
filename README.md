@@ -4,7 +4,7 @@ VESTAr 백엔드는 `PRIVATE` election prepare, on-chain indexer, `OPEN` / `PRIV
 
 ## 책임 범위
 
-- 프론트는 `createElection(...)`, `submitEncryptedVote(...)`, `submitOpenVote(...)`, `finalizeResults(...)`를 컨트랙트로 직접 전송한다.
+- 프론트는 `createElection(config, initialCandidateHashes)`, `submitEncryptedVote(...)`, `submitOpenVote(...)`, `finalizeResults(...)`를 컨트랙트로 직접 전송한다.
 - 백엔드는 `PRIVATE` election의 `prepare` 단계에서 draft 저장, key pair 생성, 해시 계산을 수행한다.
 - 백엔드는 `ElectionCreated`, `EncryptedVoteSubmitted`, `OpenVoteSubmitted`를 polling 인덱싱한다.
 - 백엔드는 `PRIVATE` ballot만 복호화하고 검증한다.
@@ -40,6 +40,8 @@ flowchart TB
 - `election_series`
   - 상위 시리즈 단위
   - `series_preimage`, `onchain_series_id`, `cover_image_url`
+  - `seriesId`는 프론트가 시리즈 단위 grouping을 위해 만드는 식별자다
+  - 현재 인덱서의 canonical series merge는 기존 placeholder/private prepare row 충돌을 피하기 위한 임시 보정 로직이다
 - `election_drafts`
   - 오프체인 prepare 단위
   - `title`, `cover_image_url`, `candidate_manifest_preimage`, `sync_state`
@@ -56,8 +58,10 @@ flowchart TB
   - draft 매핑 실패 같은 인덱싱 예외 기록
 - `open_vote_submissions`
   - `OPEN` election 전용 submission
+  - 내부 FK는 `election_ref_id`
 - `vote_submissions`
   - `PRIVATE` election 전용 encrypted submission
+  - 내부 FK는 `election_ref_id`
 - `decrypted_ballots`
 - `invalid_ballots`
 - `live_tally`
@@ -73,6 +77,8 @@ flowchart TB
 - `election_drafts` 1:0..1 `onchain_elections`
 - `onchain_elections` 1:N `open_vote_submissions`
 - `onchain_elections` 1:N `vote_submissions`
+- `open_vote_submissions.election_ref_id`, `vote_submissions.election_ref_id`, `live_tally.election_ref_id`, `finalized_tally.election_ref_id`, `result_summaries.election_ref_id`는 모두 `onchain_elections.id`를 가리키는 내부 FK다.
+- 실제 온체인 `bytes32` 식별자는 `onchain_elections.onchain_election_id`에 저장된다.
 
 ```mermaid
 erDiagram
@@ -113,19 +119,28 @@ sequenceDiagram
   BE->>DB: save election_series / election_drafts / election_keys / election_candidates
   BE-->>FE: seriesIdHash, titleHash, candidateManifestHash, publicKey, privateKeyCommitmentHash
 
-  FE->>FC: createElection(config)
+  FE->>FC: createElection(config, initialCandidateHashes)
   FC->>EL: clone + initialize
   FC-->>FE: tx hash
   FC-->>BE: ElectionCreated event (polled)
   BE->>EL: read electionId/seriesId/state/getElectionConfig
+  Note over FE,FC: seriesId는 프론트가 grouping용으로 만든 식별자
+  alt existing canonical series row found
+    BE->>DB: temporary re-link draft to existing election_series(onchain_series_id)
+    BE->>DB: delete orphan placeholder series if empty
+  else no canonical series row
+    BE->>DB: set election_series.onchain_series_id
+  end
   BE->>DB: upsert onchain_elections + draft sync/indexed
 ```
 
 1. 프론트가 `POST /private-elections/prepare` 호출
 2. 백엔드가 `election_series`, `election_drafts`, `election_candidates`, `election_keys` 저장
 3. 백엔드가 `seriesIdHash`, `titleHash`, `candidateManifestHash`, `publicKey`, `privateKeyCommitmentHash` 응답
-4. 프론트가 organizer 지갑으로 `createElection(...)` 직접 호출
+4. 프론트가 organizer 지갑으로 `createElection(config, initialCandidateHashes)` 직접 호출
 5. 백엔드 인덱서가 `ElectionCreated`를 읽고 `onchain_elections`를 확정
+6. 이미 같은 `onchain_series_id`를 가진 `election_series` row가 있으면 draft를 그 row로 재연결하고, 비어버린 placeholder series row는 정리한다
+7. 이 canonical merge는 현재 DB 충돌 회피용 임시 보정이며, 장기적으로는 프론트의 `seriesId` 생성 규칙이 더 중요하다
 
 ### 2. Open / Private vote 처리
 
@@ -143,7 +158,10 @@ sequenceDiagram
   alt PRIVATE election
     FE->>EL: submitEncryptedVote(bytes envelopeHex)
     EL-->>BE: EncryptedVoteSubmitted event (polled)
-    BE->>DB: create vote_submissions
+    BE->>EL: getTransaction(txHash)
+    BE->>BE: decode submitEncryptedVote(bytes)
+    BE->>BE: verify encryptedBallotHash
+    BE->>DB: create vote_submissions(election_ref_id)
     BE->>DB: load election_keys.private_key_encrypted
     BE->>BE: decrypt stored private key
     BE->>BE: decrypt ballot envelope
@@ -152,14 +170,17 @@ sequenceDiagram
   else OPEN election
     FE->>EL: submitOpenVote(string[] candidateKeys)
     EL-->>BE: OpenVoteSubmitted event (polled)
-    BE->>DB: create open_vote_submissions
+    BE->>EL: getTransaction(txHash)
+    BE->>BE: decode submitOpenVote(string[])
+    BE->>BE: verify candidateBatchHash
+    BE->>DB: create open_vote_submissions(election_ref_id)
     BE->>DB: recompute live_tally / result_summaries
   end
 ```
 
 - `PRIVATE`
   1. 유저가 `submitEncryptedVote(...)`를 컨트랙트로 직접 전송
-  2. 백엔드 인덱서가 `EncryptedVoteSubmitted` 이벤트와 tx input을 읽음
+  2. 백엔드 인덱서가 `EncryptedVoteSubmitted` 이벤트와 tx input을 읽고 `encryptedBallotHash` 정합성을 대조함
   3. `vote_submissions` 저장
   4. 백엔드가 `election_keys.private_key_encrypted`를 `PRIVATE_KEY_ENCRYPTION_SECRET`로 복호화
   5. 복호화한 private key로 `ECDH-P256 + AES-256-GCM` ballot envelope 복호화
@@ -167,7 +188,7 @@ sequenceDiagram
   7. `live_tally`, `result_summaries` 재계산
 - `OPEN`
   1. 유저가 `submitOpenVote(...)`를 컨트랙트로 직접 전송
-  2. 백엔드 인덱서가 `OpenVoteSubmitted` 이벤트와 tx input을 읽음
+  2. 백엔드 인덱서가 `OpenVoteSubmitted` 이벤트와 tx input을 읽고 `candidateBatchHash` 정합성을 대조함
   3. `open_vote_submissions` 저장
   4. `live_tally`, `result_summaries` 재계산
 
@@ -278,10 +299,16 @@ flowchart TD
   A[INDEXER_POLL_INTERVAL_MS 주기] --> B[get latest block]
   B --> C[index factory ElectionCreated logs]
   C --> D[index each election instance metadata]
-  D --> E[index EncryptedVoteSubmitted logs from known election addresses]
-  E --> F[process new vote submissions]
-  F --> G[reconcile prepared drafts]
-  G --> H[reconcile onchain election states]
+  D --> E[canonicalize election_series by onchain_series_id]
+  E --> F[index EncryptedVoteSubmitted logs]
+  E --> G[index OpenVoteSubmitted logs]
+  F --> H[decode tx input + verify encryptedBallotHash]
+  G --> I[decode tx input + verify candidateBatchHash]
+  H --> J[process private vote submissions]
+  I --> K[recompute open live_tally]
+  J --> L[reconcile prepared drafts]
+  K --> L
+  L --> M[reconcile onchain election states]
 ```
 
 ## Prepare API
@@ -387,6 +414,11 @@ npx prisma generate
 npx prisma db push
 npm run start:dev
 ```
+
+주의:
+
+- 이번 스키마 기준으로 내부 FK 컬럼명이 `election_ref_id`로 바뀌었으므로, 기존 DB를 그대로 쓰는 경우 `npx prisma db push`가 실패할 수 있다.
+- 새로 시작할 경우 `npx prisma db push --force-reset` 또는 `docker compose down -v` 후 재기동이 가장 단순하다.
 
 ## 관련 문서
 

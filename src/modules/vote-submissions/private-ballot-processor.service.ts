@@ -102,7 +102,7 @@ export class PrivateBallotProcessorService {
           data: {
             voteSubmissionId: submission.id,
             reasonCode: 'MISSING_ELECTION_KEY',
-            reasonDetail: `On-chain election ${submission.onchainElectionId.toString()} is not linked to a decryptable election key`,
+            reasonDetail: `On-chain election row ${submission.electionRefId.toString()} is not linked to a decryptable election key`,
           },
         });
 
@@ -194,7 +194,7 @@ export class PrivateBallotProcessorService {
   async processPendingSubmissions(electionId?: bigint) {
     const submissions = await this.prisma.voteSubmission.findMany({
       where: {
-        onchainElectionId: electionId,
+        electionRefId: electionId,
         decryptedBallot: null,
       },
       orderBy: [{ blockNumber: 'asc' }, { id: 'asc' }],
@@ -536,7 +536,7 @@ export class PrivateBallotProcessorService {
           not: submission.voteSubmissionId,
         },
         voteSubmission: {
-          onchainElectionId: submission.election.id,
+          electionRefId: submission.election.id,
           voterAddress: submission.voterAddress,
         },
       },

@@ -40,7 +40,7 @@ export class LiveTallyService {
 
     if (onchainElection?.visibilityMode === VisibilityMode.OPEN) {
       const openSubmissions = await this.prisma.openVoteSubmission.findMany({
-        where: { onchainElectionId: electionId },
+        where: { electionRefId: electionId },
         select: { candidateKeys: true },
       });
 
@@ -60,7 +60,7 @@ export class LiveTallyService {
       const validBallots = await this.prisma.decryptedBallot.findMany({
         where: {
           isValid: true,
-          voteSubmission: { onchainElectionId: electionId },
+          voteSubmission: { electionRefId: electionId },
         },
         select: { candidateKeys: true },
       });
@@ -80,7 +80,7 @@ export class LiveTallyService {
     }
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.liveTally.deleteMany({ where: { onchainElectionId: electionId } });
+      await tx.liveTally.deleteMany({ where: { electionRefId: electionId } });
 
       if (counts.size === 0) {
         return;
@@ -88,7 +88,7 @@ export class LiveTallyService {
 
       await tx.liveTally.createMany({
         data: Array.from(counts.entries()).map(([candidateKey, count]) => ({
-          onchainElectionId: electionId,
+          electionRefId: electionId,
           candidateKey,
           count,
         })),
@@ -103,9 +103,9 @@ export class LiveTallyService {
   findAll(query: { electionId?: string }) {
     return this.prisma.liveTally.findMany({
       where: {
-        onchainElectionId: toOptionalBigInt(query.electionId),
+        electionRefId: toOptionalBigInt(query.electionId),
       },
-      orderBy: [{ onchainElectionId: 'asc' }, { candidateKey: 'asc' }],
+      orderBy: [{ electionRefId: 'asc' }, { candidateKey: 'asc' }],
     });
   }
 
@@ -117,13 +117,13 @@ export class LiveTallyService {
     const electionId = BigInt(data.electionId);
     return this.prisma.liveTally.upsert({
       where: {
-        onchainElectionId_candidateKey: {
-          onchainElectionId: electionId,
+        electionRefId_candidateKey: {
+          electionRefId: electionId,
           candidateKey: data.candidateKey,
         },
       },
       create: {
-        onchainElectionId: electionId,
+        electionRefId: electionId,
         candidateKey: data.candidateKey,
         count: data.count,
       },
