@@ -181,6 +181,7 @@ VESTAr 백엔드는 `PRIVATE` election prepare, on-chain indexer, `OPEN` / `PRIV
 
 ```bash
 cp .env.example .env
+npm install
 docker compose up -d
 npx prisma generate
 npx prisma db push
