@@ -149,7 +149,7 @@ VESTAr 백엔드는 `PRIVATE` election의 생성 준비, on-chain 인덱싱, bal
 - `INDEXER_POLL_INTERVAL_MS`
 - `INDEXER_RECONCILE_LOOKBACK_BLOCKS`
 
-자세한 설명은 [ENVIRONMENT_VARIABLES.md](/Users/jeong-yoonho/vscode/Vestar/vestar-backend/ENVIRONMENT_VARIABLES.md) 참고.
+자세한 설명은 `vestar-docs/docs_backend/ENVIRONMENT_VARIABLES.md` 참고.
 
 ## 실행
 
@@ -163,8 +163,15 @@ npm run start:dev
 
 ## 관련 문서
 
-- [DB_SCHEMA.md](/Users/jeong-yoonho/vscode/Vestar/vestar-backend/DB_SCHEMA.md)
-- [PRIVATE_ELECTION_CREATION_API.md](/Users/jeong-yoonho/vscode/Vestar/vestar-backend/PRIVATE_ELECTION_CREATION_API.md)
-- [HASHING_RULES.md](/Users/jeong-yoonho/vscode/Vestar/vestar-backend/HASHING_RULES.md)
-- [BALLOT_PAYLOAD_V1.md](/Users/jeong-yoonho/vscode/Vestar/vestar-backend/BALLOT_PAYLOAD_V1.md)
-- [BALLOT_VALIDATION_RULES.md](/Users/jeong-yoonho/vscode/Vestar/vestar-backend/BALLOT_VALIDATION_RULES.md)
+백엔드 상세 문서는 `vestar-docs/docs_backend`로 이동했다.
+
+- `BACKEND_ARCHITECTURE.md`
+- `PRIVATE_ELECTION_ECC_ARCHITECTURE.md`
+- `DB_SCHEMA.md`
+- `ENVIRONMENT_VARIABLES.md`
+- `PRIVATE_ELECTION_CREATION_API.md`
+- `HASHING_RULES.md`
+- `BALLOT_PAYLOAD_V1.md`
+- `BALLOT_VALIDATION_RULES.md`
+- `OPEN_VOTE_BACKEND_PIPELINE_SPEC.md`
+- `FINALIZED_TALLY_PIPELINE_SPEC.md`
