@@ -50,6 +50,7 @@ export class ElectionsController {
     @Query('syncState') syncState?: ElectionSyncState,
     @Query('onchainState') onchainState?: OnchainElectionState,
     @Query('visibilityMode') visibilityMode?: VisibilityMode,
+    @Query('sortBy') sortBy?: 'LATEST' | 'HOT',
   ) {
     return this.electionsService.findAll({
       seriesId,
@@ -59,6 +60,7 @@ export class ElectionsController {
       syncState,
       onchainState,
       visibilityMode,
+      sortBy,
     });
   }
 
