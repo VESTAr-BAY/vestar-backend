@@ -6,6 +6,7 @@ type CreateVerifiedOrganizerDto = {
   walletAddress: string;
   status: VerifiedOrganizerStatus;
   organizationName: string;
+  contactEmail?: string | null;
   organizationLogoUrl?: string | null;
   rejectionReason?: string | null;
   verifiedBy?: bigint | null;
@@ -56,7 +57,7 @@ export class VerifiedOrganizersService {
   async requestVerification(data: {
     walletAddress: string;
     organizationName: string;
-    organizationLogoUrl?: string | null;
+    contactEmail?: string | null;
   }) {
     const existing = await this.prisma.verifiedOrganizer.findFirst({
       where: {
@@ -74,7 +75,8 @@ export class VerifiedOrganizersService {
           walletAddress: data.walletAddress,
           status: VerifiedOrganizerStatus.PENDING,
           organizationName: data.organizationName,
-          organizationLogoUrl: data.organizationLogoUrl ?? null,
+          contactEmail: data.contactEmail ?? null,
+          organizationLogoUrl: null,
           rejectionReason: null,
           verifiedBy: null,
           verifiedAt: null,
@@ -88,7 +90,7 @@ export class VerifiedOrganizersService {
         walletAddress: data.walletAddress,
         status: VerifiedOrganizerStatus.PENDING,
         organizationName: data.organizationName,
-        organizationLogoUrl: data.organizationLogoUrl ?? null,
+        contactEmail: data.contactEmail ?? null,
         rejectionReason: null,
         verifiedBy: null,
         verifiedAt: null,

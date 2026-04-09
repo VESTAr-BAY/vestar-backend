@@ -44,6 +44,7 @@ export class VerifiedOrganizersController {
       walletAddress: string;
       status: VerifiedOrganizerStatus;
       organizationName: string;
+      contactEmail?: string | null;
       organizationLogoUrl?: string | null;
       rejectionReason?: string | null;
       verifiedBy?: bigint | null;
@@ -59,7 +60,7 @@ export class VerifiedOrganizersController {
     body: {
       walletAddress: string;
       organizationName: string;
-      organizationLogoUrl?: string | null;
+      contactEmail?: string | null;
     },
   ) {
     return this.verifiedOrganizersService.requestVerification(body);
@@ -73,6 +74,7 @@ export class VerifiedOrganizersController {
       walletAddress: string;
       status: VerifiedOrganizerStatus;
       organizationName: string;
+      contactEmail?: string | null;
       organizationLogoUrl?: string | null;
       rejectionReason?: string | null;
       verifiedBy?: bigint | null;

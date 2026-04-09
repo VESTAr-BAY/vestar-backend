@@ -62,6 +62,7 @@ model VerifiedOrganizer {
   walletAddress   String                  @unique @map("wallet_address")
   status          VerifiedOrganizerStatus
   organizationName String                 @map("organization_name")
+  contactEmail    String?                 @map("contact_email")
   organizationLogoUrl String?             @map("organization_logo_url")
   rejectionReason String?                 @map("rejection_reason")
   verifiedBy      BigInt?                 @map("verified_by")

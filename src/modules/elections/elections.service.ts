@@ -162,6 +162,7 @@ export class ElectionsService {
     seriesId?: string;
     onchainElectionId?: string;
     onchainElectionAddress?: string;
+    organizerWalletAddress?: string;
     syncState?: ElectionSyncState;
     onchainState?: OnchainElectionState;
     visibilityMode?: VisibilityMode;
@@ -170,6 +171,14 @@ export class ElectionsService {
       where: {
         onchainElectionId: query.onchainElectionId,
         onchainElectionAddress: query.onchainElectionAddress,
+        ...(query.organizerWalletAddress
+          ? {
+              organizerWalletAddress: {
+                equals: query.organizerWalletAddress,
+                mode: 'insensitive',
+              },
+            }
+          : {}),
         onchainState: query.onchainState,
         visibilityMode: query.visibilityMode,
         ...(query.syncState || query.seriesId
@@ -223,6 +232,7 @@ export class ElectionsService {
     seriesId?: string;
     onchainElectionId?: string;
     onchainElectionAddress?: string;
+    organizerWalletAddress?: string;
     syncState?: ElectionSyncState;
     visibilityMode?: VisibilityMode;
   }) {
@@ -230,6 +240,14 @@ export class ElectionsService {
       where: {
         onchainElectionId: query.onchainElectionId,
         onchainElectionAddress: query.onchainElectionAddress,
+        ...(query.organizerWalletAddress
+          ? {
+              organizerWalletAddress: {
+                equals: query.organizerWalletAddress,
+                mode: 'insensitive',
+              },
+            }
+          : {}),
         visibilityMode: query.visibilityMode,
         ...(query.syncState || query.seriesId
           ? {
