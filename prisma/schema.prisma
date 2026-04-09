@@ -61,6 +61,8 @@ model VerifiedOrganizer {
   id              BigInt                  @id @default(autoincrement())
   walletAddress   String                  @unique @map("wallet_address")
   status          VerifiedOrganizerStatus
+  organizationName String                 @map("organization_name")
+  organizationLogoUrl String?             @map("organization_logo_url")
   rejectionReason String?                 @map("rejection_reason")
   verifiedBy      BigInt?                 @map("verified_by")
   verifiedAt      DateTime?               @map("verified_at")
