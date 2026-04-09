@@ -61,6 +61,7 @@ const syncableStateSnapshots: OnchainElectionState[] = [
   OnchainElectionState.KEY_REVEAL_PENDING,
 ];
 
+
 @Injectable()
 export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ElectionIndexerService.name);
@@ -727,6 +728,8 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
     }
 
     const commitmentHash = config.privateKeyCommitmentHash as `0x${string}`;
+    const candidateManifestHash = config.candidateManifestHash as string;
+    const candidateManifestUri = config.candidateManifestURI as string;
 
     const electionKey =
       commitmentHash.toLowerCase() === ZERO_BYTES32
@@ -745,7 +748,6 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
         where: { onchainSeriesId: seriesId },
         select: { id: true, coverImageUrl: true },
       });
-
       if (draft) {
         if (
           existingSeriesByOnchainId &&
@@ -768,6 +770,7 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
               where: { id: draft.seriesId },
             });
           }
+
         } else {
           await tx.electionSeries.update({
             where: { id: draft.seriesId },
@@ -780,6 +783,7 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
               syncState: ElectionSyncState.INDEXED,
             },
           });
+
         }
       } else {
         await tx.electionSeries.upsert({
@@ -801,6 +805,8 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
           onchainSeriesId: onchainSeriesId as string,
           onchainElectionId: electionId as string,
           onchainElectionAddress: electionAddress,
+          candidateManifestHash,
+          candidateManifestUri,
           organizerWalletAddress: organizer as string,
           organizerVerifiedSnapshot: organizerVerifiedSnapshot as boolean,
           visibilityMode: this.mapVisibilityMode(Number(config.visibilityMode)),
@@ -825,6 +831,8 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
           draftId: draft ? draft.id : undefined,
           onchainSeriesId: onchainSeriesId as string,
           onchainElectionAddress: electionAddress,
+          candidateManifestHash,
+          candidateManifestUri,
           organizerWalletAddress: organizer as string,
           organizerVerifiedSnapshot: organizerVerifiedSnapshot as boolean,
           visibilityMode: this.mapVisibilityMode(Number(config.visibilityMode)),

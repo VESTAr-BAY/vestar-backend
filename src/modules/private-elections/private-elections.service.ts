@@ -12,15 +12,7 @@ import {
 } from 'node:crypto';
 import { keccak256, toHex } from 'viem';
 import { PrismaService } from '../../prisma/prisma.service';
-import {
-  PreparePrivateElectionCandidateDto,
-  PreparePrivateElectionDto,
-} from './dto/prepare-private-election.dto';
-
-type CandidateManifestHashInput = {
-  candidateKey: string;
-  displayOrder: number;
-};
+import { PreparePrivateElectionDto } from './dto/prepare-private-election.dto';
 
 const PRIVATE_ELECTION_KEY_SCHEME_VERSION = 1;
 
@@ -29,15 +21,8 @@ export class PrivateElectionsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async prepare(data: PreparePrivateElectionDto) {
-    const normalizedCandidates = this.normalizeCandidatesForStorage(
-      data.candidateManifestPreimage,
-    );
-    const normalizedManifest = this.normalizeCandidateManifestForHash(
-      data.candidateManifestPreimage,
-    );
     const seriesIdHash = this.hashString(data.seriesPreimage);
     const titleHash = this.hashString(data.title);
-    const candidateManifestHash = this.hashJson(normalizedManifest);
     const { publicKeyPem, privateKeyPem } = this.generateKeyPair();
     const privateKeyCommitmentHash = this.hashString(privateKeyPem);
     const privateKeyEncrypted = this.encryptPrivateKey(privateKeyPem);
@@ -77,20 +62,10 @@ export class PrivateElectionsService {
           seriesId: series.id,
           title: data.title,
           coverImageUrl: data.coverImageUrl ?? null,
-          candidateManifestPreimage:
-            normalizedManifest as Prisma.InputJsonValue,
+          candidateManifestPreimage: Prisma.JsonNull,
           visibilityMode: VisibilityMode.PRIVATE,
           syncState: ElectionSyncState.PREPARED,
         },
-      });
-
-      await tx.electionCandidate.createMany({
-        data: normalizedCandidates.candidates.map((candidate) => ({
-          draftId: createdDraft.id,
-          candidateKey: candidate.candidateKey,
-          imageUrl: candidate.imageUrl ?? null,
-          displayOrder: candidate.displayOrder,
-        })),
       });
 
       await tx.electionKey.create({
@@ -108,7 +83,6 @@ export class PrivateElectionsService {
     return {
       seriesIdHash,
       titleHash,
-      candidateManifestHash,
       keySchemeVersion: PRIVATE_ELECTION_KEY_SCHEME_VERSION,
       publicKey: {
         format: 'pem',
@@ -116,38 +90,6 @@ export class PrivateElectionsService {
         value: publicKeyPem,
       },
       privateKeyCommitmentHash,
-      candidateManifestPreimage: normalizedManifest,
-    };
-  }
-
-  private normalizeCandidatesForStorage(manifest: {
-    candidates: PreparePrivateElectionCandidateDto[];
-  }): {
-    candidates: PreparePrivateElectionCandidateDto[];
-  } {
-    return {
-      candidates: [...manifest.candidates]
-        .map((candidate) => ({
-          candidateKey: candidate.candidateKey,
-          displayOrder: candidate.displayOrder,
-          imageUrl: candidate.imageUrl ?? null,
-        }))
-        .sort((a, b) => a.displayOrder - b.displayOrder),
-    };
-  }
-
-  private normalizeCandidateManifestForHash(manifest: {
-    candidates: PreparePrivateElectionCandidateDto[];
-  }): {
-    candidates: CandidateManifestHashInput[];
-  } {
-    return {
-      candidates: [...manifest.candidates]
-        .map((candidate) => ({
-          candidateKey: candidate.candidateKey,
-          displayOrder: candidate.displayOrder,
-        }))
-        .sort((a, b) => a.displayOrder - b.displayOrder),
     };
   }
 
@@ -173,11 +115,6 @@ export class PrivateElectionsService {
   private hashString(value: string) {
     return keccak256(toHex(value));
   }
-
-  private hashJson(value: unknown) {
-    return keccak256(toHex(JSON.stringify(value)));
-  }
-
   private encryptPrivateKey(privateKeyPem: string) {
     const secret = process.env.PRIVATE_KEY_ENCRYPTION_SECRET;
 

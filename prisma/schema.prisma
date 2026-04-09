@@ -111,6 +111,8 @@ model OnchainElection {
   onchainSeriesId            String?               @map("onchain_series_id")
   onchainElectionId          String                @unique @map("onchain_election_id")
   onchainElectionAddress     String                @unique @map("onchain_election_address")
+  candidateManifestHash      String?               @map("candidate_manifest_hash")
+  candidateManifestUri       String?               @map("candidate_manifest_uri")
   organizerWalletAddress     String                @map("organizer_wallet_address")
   organizerVerifiedSnapshot  Boolean               @map("organizer_verified_snapshot")
   visibilityMode             VisibilityMode        @map("visibility_mode")
