@@ -5,6 +5,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 type CreateVerifiedOrganizerDto = {
   walletAddress: string;
   status: VerifiedOrganizerStatus;
+  organizationName: string;
+  organizationLogoUrl?: string | null;
   rejectionReason?: string | null;
   verifiedBy?: bigint | null;
   verifiedAt?: Date | string | null;
@@ -27,6 +29,18 @@ export class VerifiedOrganizersService {
     return this.prisma.verifiedOrganizer.findUnique({ where: { id } });
   }
 
+  findByWallet(walletAddress: string) {
+    return this.prisma.verifiedOrganizer.findFirst({
+      where: {
+        walletAddress: {
+          equals: walletAddress,
+          mode: 'insensitive',
+        },
+        status: VerifiedOrganizerStatus.VERIFIED,
+      },
+    });
+  }
+
   create(data: CreateVerifiedOrganizerDto) {
     return this.prisma.verifiedOrganizer.create({
       data: {
@@ -47,4 +61,3 @@ export class VerifiedOrganizersService {
     });
   }
 }
-

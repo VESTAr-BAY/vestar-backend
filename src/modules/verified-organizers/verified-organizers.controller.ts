@@ -14,6 +14,15 @@ export class VerifiedOrganizersController {
     return this.verifiedOrganizersService.findAll(status);
   }
 
+  @Get('by-wallet')
+  findByWallet(@Query('walletAddress') walletAddress?: string) {
+    if (!walletAddress) {
+      return null;
+    }
+
+    return this.verifiedOrganizersService.findByWallet(walletAddress);
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseBigIntPipe) id: bigint) {
     return this.verifiedOrganizersService.findOne(id);
@@ -25,6 +34,8 @@ export class VerifiedOrganizersController {
     body: {
       walletAddress: string;
       status: VerifiedOrganizerStatus;
+      organizationName: string;
+      organizationLogoUrl?: string | null;
       rejectionReason?: string | null;
       verifiedBy?: bigint | null;
       verifiedAt?: string | null;
@@ -40,6 +51,8 @@ export class VerifiedOrganizersController {
     body: Partial<{
       walletAddress: string;
       status: VerifiedOrganizerStatus;
+      organizationName: string;
+      organizationLogoUrl?: string | null;
       rejectionReason?: string | null;
       verifiedBy?: bigint | null;
       verifiedAt?: string | null;
@@ -48,4 +61,3 @@ export class VerifiedOrganizersController {
     return this.verifiedOrganizersService.update(id, body);
   }
 }
-

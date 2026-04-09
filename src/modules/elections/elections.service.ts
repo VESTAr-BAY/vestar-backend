@@ -40,7 +40,39 @@ type UpdateElectionDto = Partial<CreateElectionDto>;
 export class ElectionsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private serializeElectionMetadata(onchainElection: any) {
+  private async loadVerifiedOrganizerMap(walletAddresses: string[]) {
+    if (walletAddresses.length === 0) {
+      return new Map<string, { organizationName: string }>();
+    }
+
+    const verifiedOrganizers = await this.prisma.verifiedOrganizer.findMany({
+      where: {
+        status: 'VERIFIED',
+      },
+      select: {
+        walletAddress: true,
+        organizationName: true,
+      },
+    });
+
+    const targetAddresses = new Set(walletAddresses.map((walletAddress) => walletAddress.toLowerCase()));
+    const map = new Map<string, { organizationName: string }>();
+
+    for (const organizer of verifiedOrganizers) {
+      const key = organizer.walletAddress.toLowerCase();
+      if (!targetAddresses.has(key)) {
+        continue;
+      }
+
+      map.set(key, {
+        organizationName: organizer.organizationName,
+      });
+    }
+
+    return map;
+  }
+
+  private serializeElectionMetadata(onchainElection: any, organizerMeta?: { organizationName: string } | null) {
     if (!onchainElection) {
       return onchainElection;
     }
@@ -53,6 +85,12 @@ export class ElectionsService {
       onchainSeriesId: onchainElection.onchainSeriesId,
       onchainElectionId: onchainElection.onchainElectionId,
       onchainElectionAddress: onchainElection.onchainElectionAddress,
+      organizer: organizerMeta
+        ? {
+            walletAddress: onchainElection.organizerWalletAddress,
+            organizationName: organizerMeta.organizationName,
+          }
+        : null,
       title: draft?.title ?? null,
       coverImageUrl: draft?.coverImageUrl ?? null,
       series: draft?.series ?? null,
@@ -65,7 +103,7 @@ export class ElectionsService {
     };
   }
 
-  private serializeOnchainElection(onchainElection: any) {
+  private serializeOnchainElection(onchainElection: any, organizerMeta?: { organizationName: string } | null) {
     if (!onchainElection) {
       return onchainElection;
     }
@@ -88,6 +126,12 @@ export class ElectionsService {
       onchainElectionAddress: onchainElection.onchainElectionAddress,
       organizerWalletAddress: onchainElection.organizerWalletAddress,
       organizerVerifiedSnapshot: onchainElection.organizerVerifiedSnapshot,
+      organizer: organizerMeta
+        ? {
+            walletAddress: onchainElection.organizerWalletAddress,
+            organizationName: organizerMeta.organizationName,
+          }
+        : null,
       visibilityMode: onchainElection.visibilityMode,
       paymentMode: onchainElection.paymentMode,
       ballotPolicy: onchainElection.ballotPolicy,
@@ -163,7 +207,16 @@ export class ElectionsService {
       },
     });
 
-    return elections.map((election) => this.serializeOnchainElection(election));
+    const organizerMap = await this.loadVerifiedOrganizerMap(
+      elections.map((election) => election.organizerWalletAddress),
+    );
+
+    return elections.map((election) =>
+      this.serializeOnchainElection(
+        election,
+        organizerMap.get(election.organizerWalletAddress.toLowerCase()) ?? null,
+      ),
+    );
   }
 
   async findMetadata(query: {
@@ -207,7 +260,16 @@ export class ElectionsService {
       },
     });
 
-    return elections.map((election) => this.serializeElectionMetadata(election));
+    const organizerMap = await this.loadVerifiedOrganizerMap(
+      elections.map((election) => election.organizerWalletAddress),
+    );
+
+    return elections.map((election) =>
+      this.serializeElectionMetadata(
+        election,
+        organizerMap.get(election.organizerWalletAddress.toLowerCase()) ?? null,
+      ),
+    );
   }
 
   async findOne(id: bigint) {
@@ -234,7 +296,15 @@ export class ElectionsService {
       },
     });
 
-    return this.serializeOnchainElection(election);
+    if (!election) {
+      return election;
+    }
+
+    const organizerMap = await this.loadVerifiedOrganizerMap([election.organizerWalletAddress]);
+    return this.serializeOnchainElection(
+      election,
+      organizerMap.get(election.organizerWalletAddress.toLowerCase()) ?? null,
+    );
   }
 
   async getRevealedPrivateKeyByOnchainElectionId(onchainElectionId: string) {
