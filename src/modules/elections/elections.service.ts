@@ -85,6 +85,8 @@ export class ElectionsService {
       onchainSeriesId: onchainElection.onchainSeriesId,
       onchainElectionId: onchainElection.onchainElectionId,
       onchainElectionAddress: onchainElection.onchainElectionAddress,
+      candidateManifestHash: onchainElection.candidateManifestHash ?? null,
+      candidateManifestUri: onchainElection.candidateManifestUri ?? null,
       organizer: organizerMeta
         ? {
             walletAddress: onchainElection.organizerWalletAddress,
@@ -124,6 +126,8 @@ export class ElectionsService {
       onchainSeriesId: onchainElection.onchainSeriesId,
       onchainElectionId: onchainElection.onchainElectionId,
       onchainElectionAddress: onchainElection.onchainElectionAddress,
+      candidateManifestHash: onchainElection.candidateManifestHash ?? null,
+      candidateManifestUri: onchainElection.candidateManifestUri ?? null,
       organizerWalletAddress: onchainElection.organizerWalletAddress,
       organizerVerifiedSnapshot: onchainElection.organizerVerifiedSnapshot,
       organizer: organizerMeta
@@ -149,7 +153,6 @@ export class ElectionsService {
       title: draft?.title ?? null,
       coverImageUrl: draft?.coverImageUrl ?? null,
       syncState: draft?.syncState ?? null,
-      candidateManifestPreimage: draft?.candidateManifestPreimage ?? null,
       series: draft?.series ?? null,
       electionKey: draft?.electionKey ?? null,
       electionCandidates: draft?.electionCandidates ?? [],

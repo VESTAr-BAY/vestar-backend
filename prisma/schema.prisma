@@ -91,7 +91,6 @@ model ElectionDraft {
   seriesId                   BigInt               @map("series_id")
   title                      String
   coverImageUrl              String?              @map("cover_image_url")
-  candidateManifestPreimage  Json                 @map("candidate_manifest_preimage")
   visibilityMode             VisibilityMode       @default(PRIVATE) @map("visibility_mode")
   syncState                  ElectionSyncState    @map("sync_state")
   createdAt                  DateTime             @default(now()) @map("created_at")
@@ -111,6 +110,8 @@ model OnchainElection {
   onchainSeriesId            String?               @map("onchain_series_id")
   onchainElectionId          String                @unique @map("onchain_election_id")
   onchainElectionAddress     String                @unique @map("onchain_election_address")
+  candidateManifestHash      String?               @map("candidate_manifest_hash")
+  candidateManifestUri       String?               @map("candidate_manifest_uri")
   organizerWalletAddress     String                @map("organizer_wallet_address")
   organizerVerifiedSnapshot  Boolean               @map("organizer_verified_snapshot")
   visibilityMode             VisibilityMode        @map("visibility_mode")
