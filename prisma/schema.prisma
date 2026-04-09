@@ -91,7 +91,6 @@ model ElectionDraft {
   seriesId                   BigInt               @map("series_id")
   title                      String
   coverImageUrl              String?              @map("cover_image_url")
-  candidateManifestPreimage  Json                 @map("candidate_manifest_preimage")
   visibilityMode             VisibilityMode       @default(PRIVATE) @map("visibility_mode")
   syncState                  ElectionSyncState    @map("sync_state")
   createdAt                  DateTime             @default(now()) @map("created_at")

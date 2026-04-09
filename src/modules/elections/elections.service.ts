@@ -153,7 +153,6 @@ export class ElectionsService {
       title: draft?.title ?? null,
       coverImageUrl: draft?.coverImageUrl ?? null,
       syncState: draft?.syncState ?? null,
-      candidateManifestPreimage: draft?.candidateManifestPreimage ?? null,
       series: draft?.series ?? null,
       electionKey: draft?.electionKey ?? null,
       electionCandidates: draft?.electionCandidates ?? [],

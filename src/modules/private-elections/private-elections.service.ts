@@ -1,9 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import {
-  ElectionSyncState,
-  Prisma,
-  VisibilityMode,
-} from '@prisma/client';
+import { ElectionSyncState, VisibilityMode } from '@prisma/client';
 import {
   createCipheriv,
   createHash,
@@ -62,7 +58,6 @@ export class PrivateElectionsService {
           seriesId: series.id,
           title: data.title,
           coverImageUrl: data.coverImageUrl ?? null,
-          candidateManifestPreimage: Prisma.JsonNull,
           visibilityMode: VisibilityMode.PRIVATE,
           syncState: ElectionSyncState.PREPARED,
         },
