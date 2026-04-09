@@ -166,6 +166,7 @@ export class ElectionsService {
     syncState?: ElectionSyncState;
     onchainState?: OnchainElectionState;
     visibilityMode?: VisibilityMode;
+    sortBy?: 'LATEST' | 'HOT';
   }) {
     const elections = await this.prisma.onchainElection.findMany({
       where: {
@@ -192,7 +193,7 @@ export class ElectionsService {
             }
           : {}),
       },
-      orderBy: { id: 'asc' },
+      orderBy: { id: 'desc' },
       include: {
         draft: {
           include: {
@@ -215,6 +216,20 @@ export class ElectionsService {
         resultSummary: true,
       },
     });
+
+    if (query.sortBy === 'HOT') {
+      elections.sort((left, right) => {
+        const submissionDiff =
+          (right.resultSummary?.totalSubmissions ?? 0) -
+          (left.resultSummary?.totalSubmissions ?? 0);
+
+        if (submissionDiff !== 0) {
+          return submissionDiff;
+        }
+
+        return Number(right.id - left.id);
+      });
+    }
 
     const organizerMap = await this.loadVerifiedOrganizerMap(
       elections.map((election) => election.organizerWalletAddress),
