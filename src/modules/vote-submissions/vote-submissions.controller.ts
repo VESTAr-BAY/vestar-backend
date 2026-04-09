@@ -18,6 +18,15 @@ export class VoteSubmissionsController {
     return this.voteSubmissionsService.findAll({ electionId, voterAddress });
   }
 
+  @Get('history')
+  findHistory(@Query('voterAddress') voterAddress?: string) {
+    if (!voterAddress) {
+      return [];
+    }
+
+    return this.voteSubmissionsService.findHistory(voterAddress);
+  }
+
   @Get('by-tx-hash')
   findByTxHash(@Query('txHash') txHash?: string) {
     if (!txHash) {

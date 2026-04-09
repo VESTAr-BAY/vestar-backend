@@ -23,6 +23,15 @@ export class VerifiedOrganizersController {
     return this.verifiedOrganizersService.findByWallet(walletAddress);
   }
 
+  @Get('request-status')
+  findRequestStatusByWallet(@Query('walletAddress') walletAddress?: string) {
+    if (!walletAddress) {
+      return null;
+    }
+
+    return this.verifiedOrganizersService.findRequestStatusByWallet(walletAddress);
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseBigIntPipe) id: bigint) {
     return this.verifiedOrganizersService.findOne(id);
@@ -35,6 +44,7 @@ export class VerifiedOrganizersController {
       walletAddress: string;
       status: VerifiedOrganizerStatus;
       organizationName: string;
+      contactEmail?: string | null;
       organizationLogoUrl?: string | null;
       rejectionReason?: string | null;
       verifiedBy?: bigint | null;
@@ -42,6 +52,18 @@ export class VerifiedOrganizersController {
     },
   ) {
     return this.verifiedOrganizersService.create(body);
+  }
+
+  @Post('request')
+  request(
+    @Body()
+    body: {
+      walletAddress: string;
+      organizationName: string;
+      contactEmail?: string | null;
+    },
+  ) {
+    return this.verifiedOrganizersService.requestVerification(body);
   }
 
   @Patch(':id')
@@ -52,6 +74,7 @@ export class VerifiedOrganizersController {
       walletAddress: string;
       status: VerifiedOrganizerStatus;
       organizationName: string;
+      contactEmail?: string | null;
       organizationLogoUrl?: string | null;
       rejectionReason?: string | null;
       verifiedBy?: bigint | null;
@@ -59,5 +82,28 @@ export class VerifiedOrganizersController {
     }>,
   ) {
     return this.verifiedOrganizersService.update(id, body);
+  }
+
+  @Patch(':id/approve')
+  approve(
+    @Param('id', ParseBigIntPipe) id: bigint,
+    @Body()
+    body?: {
+      verifiedBy?: bigint | null;
+    },
+  ) {
+    return this.verifiedOrganizersService.approve(id, body);
+  }
+
+  @Patch(':id/reject')
+  reject(
+    @Param('id', ParseBigIntPipe) id: bigint,
+    @Body()
+    body?: {
+      verifiedBy?: bigint | null;
+      rejectionReason?: string | null;
+    },
+  ) {
+    return this.verifiedOrganizersService.reject(id, body);
   }
 }

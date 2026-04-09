@@ -27,6 +27,7 @@ export class ElectionsController {
     @Query('seriesId') seriesId?: string,
     @Query('onchainElectionId') onchainElectionId?: string,
     @Query('onchainElectionAddress') onchainElectionAddress?: string,
+    @Query('organizerWalletAddress') organizerWalletAddress?: string,
     @Query('syncState') syncState?: ElectionSyncState,
     @Query('visibilityMode') visibilityMode?: VisibilityMode,
   ) {
@@ -34,6 +35,7 @@ export class ElectionsController {
       seriesId,
       onchainElectionId,
       onchainElectionAddress,
+      organizerWalletAddress,
       syncState,
       visibilityMode,
     });
@@ -44,6 +46,7 @@ export class ElectionsController {
     @Query('seriesId') seriesId?: string,
     @Query('onchainElectionId') onchainElectionId?: string,
     @Query('onchainElectionAddress') onchainElectionAddress?: string,
+    @Query('organizerWalletAddress') organizerWalletAddress?: string,
     @Query('syncState') syncState?: ElectionSyncState,
     @Query('onchainState') onchainState?: OnchainElectionState,
     @Query('visibilityMode') visibilityMode?: VisibilityMode,
@@ -52,6 +55,7 @@ export class ElectionsController {
       seriesId,
       onchainElectionId,
       onchainElectionAddress,
+      organizerWalletAddress,
       syncState,
       onchainState,
       visibilityMode,
