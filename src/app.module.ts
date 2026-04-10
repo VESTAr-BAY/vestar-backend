@@ -1,8 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AdminUsersModule } from './modules/admin-users/admin-users.module';
 import { DecryptedBallotsModule } from './modules/decrypted-ballots/decrypted-ballots.module';
-import { ElectionCandidatesModule } from './modules/election-candidates/election-candidates.module';
-import { ElectionGroupsModule } from './modules/election-groups/election-groups.module';
 import { ElectionKeysModule } from './modules/election-keys/election-keys.module';
 import { ElectionsModule } from './modules/elections/elections.module';
 import { FinalizedTallyModule } from './modules/finalized-tally/finalized-tally.module';
@@ -23,10 +21,8 @@ import { PrismaModule } from './prisma/prisma.module';
     PrismaModule,
     AdminUsersModule,
     VerifiedOrganizersModule,
-    ElectionGroupsModule,
     ElectionsModule,
     ElectionKeysModule,
-    ElectionCandidatesModule,
     IndexerModule,
     VoteSubmissionsModule,
     DecryptedBallotsModule,

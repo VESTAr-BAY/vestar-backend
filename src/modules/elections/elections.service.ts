@@ -78,6 +78,7 @@ export class ElectionsService {
     }
 
     const draft = onchainElection.draft;
+    const series = onchainElection.series ?? draft?.series ?? null;
 
     return {
       id: onchainElection.id,
@@ -95,13 +96,12 @@ export class ElectionsService {
         : null,
       title: draft?.title ?? null,
       coverImageUrl: draft?.coverImageUrl ?? null,
-      series: draft?.series ?? null,
+      series,
       electionKey: draft?.electionKey
         ? {
             publicKey: draft.electionKey.publicKey,
           }
         : null,
-      electionCandidates: draft?.electionCandidates ?? [],
     };
   }
 
@@ -111,9 +111,12 @@ export class ElectionsService {
     }
 
     const draft = onchainElection.draft;
+    const series = onchainElection.series ?? draft?.series ?? null;
 
-    const validDecryptedBallotCount = Array.isArray(onchainElection.voteSubmissions)
-      ? onchainElection.voteSubmissions.reduce(
+    const validDecryptedBallotCount = Array.isArray(
+      onchainElection.privateVoteSubmissions,
+    )
+      ? onchainElection.privateVoteSubmissions.reduce(
           (count: number, submission: any) =>
             submission.decryptedBallot?.isValid ? count + 1 : count,
           0,
@@ -153,9 +156,8 @@ export class ElectionsService {
       title: draft?.title ?? null,
       coverImageUrl: draft?.coverImageUrl ?? null,
       syncState: draft?.syncState ?? null,
-      series: draft?.series ?? null,
+      series,
       electionKey: draft?.electionKey ?? null,
-      electionCandidates: draft?.electionCandidates ?? [],
       validDecryptedBallotCount,
       resultSummary: onchainElection.resultSummary ?? null,
     };
@@ -202,12 +204,10 @@ export class ElectionsService {
           include: {
             series: true,
             electionKey: true,
-            electionCandidates: {
-              orderBy: { displayOrder: 'asc' },
-            },
           },
         },
-        voteSubmissions: {
+        series: true,
+        privateVoteSubmissions: {
           select: {
             decryptedBallot: {
               select: {
@@ -288,11 +288,9 @@ export class ElectionsService {
                 publicKey: true,
               },
             },
-            electionCandidates: {
-              orderBy: { displayOrder: 'asc' },
-            },
           },
         },
+        series: true,
       },
     });
 
@@ -316,10 +314,10 @@ export class ElectionsService {
           include: {
             series: true,
             electionKey: true,
-            electionCandidates: true,
           },
         },
-        voteSubmissions: {
+        series: true,
+        privateVoteSubmissions: {
           select: {
             decryptedBallot: {
               select: {

@@ -60,18 +60,15 @@ export class PrivateBallotProcessorService {
     private readonly liveTallyService: LiveTallyService,
   ) {}
 
-  async processSubmission(voteSubmissionId: bigint) {
-    const submission = await this.prisma.voteSubmission.findUnique({
-      where: { id: voteSubmissionId },
+  async processSubmission(privateVoteSubmissionId: bigint) {
+    const submission = await this.prisma.privateVoteSubmission.findUnique({
+      where: { id: privateVoteSubmissionId },
       include: {
         onchainElection: {
           include: {
             draft: {
               include: {
                 electionKey: true,
-                electionCandidates: {
-                  orderBy: { displayOrder: 'asc' },
-                },
               },
             },
           },
@@ -82,24 +79,26 @@ export class PrivateBallotProcessorService {
     });
 
     if (!submission) {
-      throw new Error(`Vote submission ${voteSubmissionId.toString()} not found`);
+      throw new Error(
+        `Private vote submission ${privateVoteSubmissionId.toString()} not found`,
+      );
     }
 
     if (!submission.onchainElection.draft?.electionKey) {
       const processedSubmission = await this.prisma.$transaction(async (tx) => {
         await tx.invalidBallot.deleteMany({
-          where: { voteSubmissionId: submission.id },
+          where: { privateVoteSubmissionId: submission.id },
         });
 
         if (submission.decryptedBallot) {
           await tx.decryptedBallot.delete({
-            where: { voteSubmissionId: submission.id },
+            where: { privateVoteSubmissionId: submission.id },
           });
         }
 
         await tx.decryptedBallot.create({
           data: {
-            voteSubmissionId: submission.id,
+            privateVoteSubmissionId: submission.id,
             candidateKeys: [] as never,
             nonce: '',
             isValid: false,
@@ -109,13 +108,13 @@ export class PrivateBallotProcessorService {
 
         await tx.invalidBallot.create({
           data: {
-            voteSubmissionId: submission.id,
+            privateVoteSubmissionId: submission.id,
             reasonCode: 'MISSING_ELECTION_KEY',
             reasonDetail: `On-chain election row ${submission.electionRefId.toString()} is not linked to a decryptable election key`,
           },
         });
 
-        return tx.voteSubmission.findUnique({
+        return tx.privateVoteSubmission.findUnique({
           where: { id: submission.id },
           include: {
             decryptedBallot: true,
@@ -130,7 +129,7 @@ export class PrivateBallotProcessorService {
     }
 
     const validation = await this.validateEncryptedSubmission({
-      voteSubmissionId: submission.id,
+      privateVoteSubmissionId: submission.id,
       voterAddress: submission.voterAddress,
       blockTimestamp: submission.blockTimestamp,
       encryptedBallot: submission.encryptedBallot,
@@ -148,7 +147,6 @@ export class PrivateBallotProcessorService {
         endAt: submission.onchainElection.endAt,
         onchainState: submission.onchainElection.onchainState,
         candidateManifestUri: submission.onchainElection.candidateManifestUri,
-        electionCandidates: submission.onchainElection.draft.electionCandidates,
         electionKey: {
           privateKeyEncrypted:
             submission.onchainElection.draft.electionKey.privateKeyEncrypted,
@@ -158,20 +156,20 @@ export class PrivateBallotProcessorService {
 
     const processedSubmission = await this.prisma.$transaction(async (tx) => {
       await tx.invalidBallot.deleteMany({
-        where: { voteSubmissionId: submission.id },
+        where: { privateVoteSubmissionId: submission.id },
       });
 
       if (submission.decryptedBallot) {
         await tx.decryptedBallot.delete({
-          where: { voteSubmissionId: submission.id },
+          where: { privateVoteSubmissionId: submission.id },
         });
       }
 
-      const decryptedBallot = await tx.decryptedBallot.create({
+      await tx.decryptedBallot.create({
         data: {
-          voteSubmissionId: submission.id,
+          privateVoteSubmissionId: submission.id,
           candidateKeys: (validation.payload?.candidateKeys ?? []) as never,
-          nonce: validation.payload?.nonce ?? '',
+          nonce: this.normalizePayloadNonce(validation.payload?.nonce) ?? '',
           isValid: validation.isValid,
           validatedAt: new Date(),
         },
@@ -180,14 +178,14 @@ export class PrivateBallotProcessorService {
       if (!validation.isValid) {
         await tx.invalidBallot.create({
           data: {
-            voteSubmissionId: submission.id,
+            privateVoteSubmissionId: submission.id,
             reasonCode: validation.reasonCode,
             reasonDetail: validation.reasonDetail ?? null,
           },
         });
       }
 
-      return tx.voteSubmission.findUnique({
+      return tx.privateVoteSubmission.findUnique({
         where: { id: submission.id },
         include: {
           decryptedBallot: true,
@@ -202,7 +200,7 @@ export class PrivateBallotProcessorService {
   }
 
   async processPendingSubmissions(electionId?: bigint) {
-    const submissions = await this.prisma.voteSubmission.findMany({
+    const submissions = await this.prisma.privateVoteSubmission.findMany({
       where: {
         electionRefId: electionId,
         decryptedBallot: null,
@@ -223,7 +221,7 @@ export class PrivateBallotProcessorService {
   }
 
   private async validateEncryptedSubmission(submission: {
-    voteSubmissionId: bigint;
+    privateVoteSubmissionId: bigint;
     voterAddress: string;
     blockTimestamp: Date;
     encryptedBallot: string;
@@ -240,7 +238,6 @@ export class PrivateBallotProcessorService {
       endAt: Date | null;
       onchainState: OnchainElectionState | null;
       candidateManifestUri: string | null;
-      electionCandidates: Array<{ candidateKey: string }>;
       electionKey: { privateKeyEncrypted: string };
     };
   }): Promise<ValidationResult> {
@@ -307,7 +304,8 @@ export class PrivateBallotProcessorService {
         };
       }
 
-      if (!payload.nonce || payload.nonce.trim() === '') {
+      const normalizedNonce = this.normalizePayloadNonce(payload.nonce);
+      if (!normalizedNonce) {
         return {
           isValid: false,
           reasonCode: 'INVALID_JSON',
@@ -315,6 +313,8 @@ export class PrivateBallotProcessorService {
           payload,
         };
       }
+
+      payload.nonce = normalizedNonce;
 
       const candidateKeySet = new Set(payload.candidateKeys);
       if (candidateKeySet.size !== payload.candidateKeys.length) {
@@ -328,7 +328,6 @@ export class PrivateBallotProcessorService {
 
       const allowedCandidateKeys = await this.resolveAllowedCandidateKeys(
         submission.election.candidateManifestUri,
-        submission.election.electionCandidates,
       );
 
       const unknownCandidate = payload.candidateKeys.find(
@@ -473,6 +472,15 @@ export class PrivateBallotProcessorService {
     return JSON.parse(plaintext) as BallotPayloadV1;
   }
 
+  private normalizePayloadNonce(nonce: unknown): string | null {
+    if (typeof nonce !== 'string') {
+      return null;
+    }
+
+    const trimmed = nonce.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
   private parseEncryptedBallotEnvelope(
     encryptedBallot: string,
   ): EncryptedBallotEnvelope {
@@ -503,19 +511,8 @@ export class PrivateBallotProcessorService {
 
   private async resolveAllowedCandidateKeys(
     candidateManifestUri: string | null,
-    electionCandidates: Array<{ candidateKey: string }>,
   ) {
-    const manifestCandidateKeys = await this.fetchManifestCandidateKeys(candidateManifestUri);
-
-    if (manifestCandidateKeys.size > 0) {
-      return manifestCandidateKeys;
-    }
-
-    return new Set(
-      electionCandidates
-        .map((candidate) => candidate.candidateKey)
-        .filter((candidateKey) => candidateKey.trim().length > 0),
-    );
+    return this.fetchManifestCandidateKeys(candidateManifestUri);
   }
 
   private async fetchManifestCandidateKeys(candidateManifestUri: string | null) {
@@ -562,7 +559,7 @@ export class PrivateBallotProcessorService {
   }
 
   private async validateBallotUsage(submission: {
-    voteSubmissionId: bigint;
+    privateVoteSubmissionId: bigint;
     voterAddress: string;
     blockTimestamp: Date;
     election: {
@@ -604,16 +601,16 @@ export class PrivateBallotProcessorService {
     const priorValidBallots = await this.prisma.decryptedBallot.findMany({
       where: {
         isValid: true,
-        voteSubmissionId: {
-          not: submission.voteSubmissionId,
+        privateVoteSubmissionId: {
+          not: submission.privateVoteSubmissionId,
         },
-        voteSubmission: {
+        privateVoteSubmission: {
           electionRefId: submission.election.id,
           voterAddress: submission.voterAddress,
         },
       },
       include: {
-        voteSubmission: {
+        privateVoteSubmission: {
           select: {
             blockTimestamp: true,
           },
@@ -631,7 +628,7 @@ export class PrivateBallotProcessorService {
     const submittedBallotsInPeriod = priorValidBallots.reduce(
       (count, ballot) =>
         this.currentPeriodKey(
-          ballot.voteSubmission.blockTimestamp,
+          ballot.privateVoteSubmission.blockTimestamp,
           ballotPolicy,
           submission.election.resetIntervalSeconds,
           submission.election.timezoneWindowOffset ?? 0,
