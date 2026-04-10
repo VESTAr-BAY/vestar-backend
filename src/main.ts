@@ -6,6 +6,13 @@ import { json, urlencoded } from 'express';
 import express from 'express';
 import { AppModule } from './app.module';
 
+function parseCorsOrigins(value: string | undefined): string[] {
+  return (value ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+}
+
 async function bootstrap() {
   Object.defineProperty(BigInt.prototype, 'toJSON', {
     value() {
@@ -15,14 +22,13 @@ async function bootstrap() {
   });
 
   const app = await NestFactory.create(AppModule);
-app.enableCors({
-    origin: [
-      'http://localhost:5173',
-      'https://boisterous-sfogliatella-3e55f2.netlify.app',
-    ],
+  const corsOrigins = parseCorsOrigins(process.env.FRONTEND_ORIGINS);
+
+  app.enableCors({
+    origin: corsOrigins,
     credentials: true,
   });
-  
+
   app.use(json({ limit: '200kb' }));
   app.use(urlencoded({ extended: true, limit: '200kb' }));
   app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
