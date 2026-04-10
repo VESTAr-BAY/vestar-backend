@@ -29,6 +29,7 @@
   "homepage": "https://github.com/VESTAr-BAY/vestar-backend#readme",
   "dependencies": {
     "@nestjs/common": "^11.1.18",
+    "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.1.18",
     "@nestjs/platform-express": "^11.1.18",
     "@prisma/adapter-pg": "^7.6.0",
