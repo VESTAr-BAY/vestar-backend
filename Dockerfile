@@ -22,6 +22,8 @@ ENV NODE_ENV=production
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
+RUN npx prisma generate
+
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
 
