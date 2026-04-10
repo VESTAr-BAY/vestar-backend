@@ -41,8 +41,17 @@ type ValidationResult =
       isValid: false;
       reasonCode: string;
       reasonDetail?: string;
-      payload?: Partial<BallotPayloadV1>;
+  payload?: Partial<BallotPayloadV1>;
     };
+
+type CandidateManifestRecord = {
+  candidateKey?: string;
+  displayName?: string | null;
+};
+
+type CandidateManifestEnvelope = {
+  candidates?: CandidateManifestRecord[];
+};
 
 @Injectable()
 export class PrivateBallotProcessorService {
@@ -138,6 +147,7 @@ export class PrivateBallotProcessorService {
         startAt: submission.onchainElection.startAt,
         endAt: submission.onchainElection.endAt,
         onchainState: submission.onchainElection.onchainState,
+        candidateManifestUri: submission.onchainElection.candidateManifestUri,
         electionCandidates: submission.onchainElection.draft.electionCandidates,
         electionKey: {
           privateKeyEncrypted:
@@ -229,6 +239,7 @@ export class PrivateBallotProcessorService {
       startAt: Date | null;
       endAt: Date | null;
       onchainState: OnchainElectionState | null;
+      candidateManifestUri: string | null;
       electionCandidates: Array<{ candidateKey: string }>;
       electionKey: { privateKeyEncrypted: string };
     };
@@ -315,8 +326,9 @@ export class PrivateBallotProcessorService {
         };
       }
 
-      const allowedCandidateKeys = new Set(
-        submission.election.electionCandidates.map((candidate) => candidate.candidateKey),
+      const allowedCandidateKeys = await this.resolveAllowedCandidateKeys(
+        submission.election.candidateManifestUri,
+        submission.election.electionCandidates,
       );
 
       const unknownCandidate = payload.candidateKeys.find(
@@ -487,6 +499,66 @@ export class PrivateBallotProcessorService {
       authTag: parsed.authTag,
       ciphertext: parsed.ciphertext,
     };
+  }
+
+  private async resolveAllowedCandidateKeys(
+    candidateManifestUri: string | null,
+    electionCandidates: Array<{ candidateKey: string }>,
+  ) {
+    const manifestCandidateKeys = await this.fetchManifestCandidateKeys(candidateManifestUri);
+
+    if (manifestCandidateKeys.size > 0) {
+      return manifestCandidateKeys;
+    }
+
+    return new Set(
+      electionCandidates
+        .map((candidate) => candidate.candidateKey)
+        .filter((candidateKey) => candidateKey.trim().length > 0),
+    );
+  }
+
+  private async fetchManifestCandidateKeys(candidateManifestUri: string | null) {
+    if (!candidateManifestUri) {
+      return new Set<string>();
+    }
+
+    try {
+      const response = await fetch(this.resolveManifestUri(candidateManifestUri));
+      if (!response.ok) {
+        return new Set<string>();
+      }
+
+      const payload = (await response.json()) as CandidateManifestEnvelope;
+      if (!Array.isArray(payload.candidates)) {
+        return new Set<string>();
+      }
+
+      return new Set(
+        payload.candidates
+          .map((candidate) => candidate.candidateKey?.trim() ?? '')
+          .filter((candidateKey) => candidateKey.length > 0),
+      );
+    } catch {
+      return new Set<string>();
+    }
+  }
+
+  private resolveManifestUri(candidateManifestUri: string) {
+    if (candidateManifestUri.startsWith('http://') || candidateManifestUri.startsWith('https://')) {
+      return candidateManifestUri;
+    }
+
+    if (candidateManifestUri.startsWith('ipfs://')) {
+      const gateway =
+        process.env.PINATA_GATEWAYS ||
+        process.env.PINATA_GATEWAY_URL ||
+        'https://gateway.pinata.cloud';
+
+      return `${gateway.replace(/\/$/, '')}/ipfs/${candidateManifestUri.slice('ipfs://'.length)}`;
+    }
+
+    return candidateManifestUri;
   }
 
   private async validateBallotUsage(submission: {

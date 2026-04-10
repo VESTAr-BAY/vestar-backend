@@ -37,7 +37,12 @@ export class FinalizedTallyService {
       },
     });
 
-    const candidates = onchainElection?.draft?.electionCandidates ?? [];
+    const manifestCandidateKeys = await this.fetchManifestCandidateKeys(
+      onchainElection?.candidateManifestUri ?? null,
+    );
+    const candidates = manifestCandidateKeys.length
+      ? manifestCandidateKeys.map((candidateKey) => ({ candidateKey }))
+      : (onchainElection?.draft?.electionCandidates ?? []);
     const counts = new Map<string, number>();
     for (const candidate of candidates) {
       counts.set(candidate.candidateKey, 0);
@@ -147,5 +152,49 @@ export class FinalizedTallyService {
         finalizedAt: new Date(data.finalizedAt),
       },
     });
+  }
+
+  private async fetchManifestCandidateKeys(candidateManifestUri: string | null) {
+    if (!candidateManifestUri) {
+      return [];
+    }
+
+    try {
+      const response = await fetch(this.resolveManifestUri(candidateManifestUri));
+      if (!response.ok) {
+        return [];
+      }
+
+      const payload = (await response.json()) as {
+        candidates?: Array<{ candidateKey?: string; displayName?: string | null }>;
+      };
+
+      if (!Array.isArray(payload.candidates)) {
+        return [];
+      }
+
+      return payload.candidates
+        .map((candidate) => candidate.candidateKey?.trim() ?? '')
+        .filter((candidateKey) => candidateKey.length > 0);
+    } catch {
+      return [];
+    }
+  }
+
+  private resolveManifestUri(candidateManifestUri: string) {
+    if (candidateManifestUri.startsWith('http://') || candidateManifestUri.startsWith('https://')) {
+      return candidateManifestUri;
+    }
+
+    if (candidateManifestUri.startsWith('ipfs://')) {
+      const gateway =
+        process.env.PINATA_GATEWAYS ||
+        process.env.PINATA_GATEWAY_URL ||
+        'https://gateway.pinata.cloud';
+
+      return `${gateway.replace(/\/$/, '')}/ipfs/${candidateManifestUri.slice('ipfs://'.length)}`;
+    }
+
+    return candidateManifestUri;
   }
 }
