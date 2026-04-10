@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { AdminUsersModule } from './modules/admin-users/admin-users.module';
 import { DecryptedBallotsModule } from './modules/decrypted-ballots/decrypted-ballots.module';
 import { ElectionKeysModule } from './modules/election-keys/election-keys.module';
@@ -18,6 +19,10 @@ import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['.env'],
+    }),
     PrismaModule,
     AdminUsersModule,
     VerifiedOrganizersModule,
