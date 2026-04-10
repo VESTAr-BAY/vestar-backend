@@ -9,6 +9,7 @@ type CreateVoteSubmissionDto = {
   blockNumber: number;
   blockTimestamp: string | Date;
   encryptedBallot: string;
+  paymentAmount?: string;
 };
 
 type UpdateVoteSubmissionDto = Partial<CreateVoteSubmissionDto>;
@@ -56,7 +57,7 @@ export class VoteSubmissionsService {
   constructor(private readonly prisma: PrismaService) {}
 
   findAll(query: { electionId?: string; voterAddress?: string }) {
-    return this.prisma.voteSubmission.findMany({
+    return this.prisma.privateVoteSubmission.findMany({
       where: {
         electionRefId: toOptionalBigInt(query.electionId),
         voterAddress: query.voterAddress,
@@ -76,7 +77,7 @@ export class VoteSubmissionsService {
     const normalizedAddress = voterAddress.toLowerCase();
 
     const [privateSubmissions, openSubmissions] = await Promise.all([
-      this.prisma.voteSubmission.findMany({
+      this.prisma.privateVoteSubmission.findMany({
         where: {
           voterAddress: normalizedAddress,
         },
@@ -110,6 +111,7 @@ export class VoteSubmissionsService {
         voterAddress: submission.voterAddress,
         blockNumber: submission.blockNumber,
         blockTimestamp: submission.blockTimestamp,
+        paymentAmount: submission.paymentAmount,
         onchainElection: submission.onchainElection
           ? {
               id: submission.onchainElection.id.toString(),
@@ -145,6 +147,7 @@ export class VoteSubmissionsService {
         voterAddress: submission.voterAddress,
         blockNumber: submission.blockNumber,
         blockTimestamp: submission.blockTimestamp,
+        paymentAmount: submission.paymentAmount,
         onchainElection: submission.onchainElection
           ? {
               id: submission.onchainElection.id.toString(),
@@ -191,7 +194,7 @@ export class VoteSubmissionsService {
   }
 
   findOne(id: bigint) {
-    return this.prisma.voteSubmission.findUnique({
+    return this.prisma.privateVoteSubmission.findUnique({
       where: { id },
       include: {
         onchainElection: {
@@ -204,7 +207,7 @@ export class VoteSubmissionsService {
   }
 
   findByTxHash(onchainTxHash: string) {
-    return this.prisma.voteSubmission.findUnique({
+    return this.prisma.privateVoteSubmission.findUnique({
       where: { onchainTxHash: onchainTxHash.toLowerCase() },
       include: {
         onchainElection: {
@@ -217,7 +220,7 @@ export class VoteSubmissionsService {
   }
 
   create(data: CreateVoteSubmissionDto) {
-    return this.prisma.voteSubmission.create({
+    return this.prisma.privateVoteSubmission.create({
       data: {
         electionRefId: BigInt(data.electionId),
         onchainTxHash: data.onchainTxHash.toLowerCase(),
@@ -225,12 +228,13 @@ export class VoteSubmissionsService {
         blockNumber: data.blockNumber,
         blockTimestamp: new Date(data.blockTimestamp),
         encryptedBallot: data.encryptedBallot,
+        paymentAmount: data.paymentAmount ?? '0',
       },
     });
   }
 
   update(id: bigint, data: UpdateVoteSubmissionDto) {
-    return this.prisma.voteSubmission.update({
+    return this.prisma.privateVoteSubmission.update({
       where: { id },
       data: {
         electionRefId:
@@ -242,6 +246,7 @@ export class VoteSubmissionsService {
           ? new Date(data.blockTimestamp)
           : undefined,
         encryptedBallot: data.encryptedBallot,
+        paymentAmount: data.paymentAmount,
       },
     });
   }

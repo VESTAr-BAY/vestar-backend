@@ -36,12 +36,12 @@ export class ResultSummariesService {
       totalInvalidVotes = 0;
     } else {
       const [privateTotalSubmissions, decryptedBallots] = await Promise.all([
-        this.prisma.voteSubmission.count({
+        this.prisma.privateVoteSubmission.count({
           where: { electionRefId: electionId },
         }),
         this.prisma.decryptedBallot.findMany({
           where: {
-            voteSubmission: { electionRefId: electionId },
+            privateVoteSubmission: { electionRefId: electionId },
           },
           select: { isValid: true },
         }),

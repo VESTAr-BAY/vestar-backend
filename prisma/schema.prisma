@@ -75,13 +75,14 @@ model VerifiedOrganizer {
 }
 
 model ElectionSeries {
-  id              BigInt     @id @default(autoincrement())
-  seriesPreimage  String     @unique @map("series_preimage")
-  onchainSeriesId String?    @unique @map("onchain_series_id")
-  coverImageUrl   String?    @map("cover_image_url")
-  createdAt       DateTime   @default(now()) @map("created_at")
-  updatedAt       DateTime   @updatedAt @map("updated_at")
-  electionDrafts  ElectionDraft[]
+  id               BigInt           @id @default(autoincrement())
+  seriesPreimage   String?          @map("series_preimage")
+  onchainSeriesId  String?          @unique @map("onchain_series_id")
+  coverImageUrl    String?          @map("cover_image_url")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  electionDrafts   ElectionDraft[]
+  onchainElections OnchainElection[]
 
   @@map("election_series")
 }
@@ -91,13 +92,11 @@ model ElectionDraft {
   seriesId                   BigInt               @map("series_id")
   title                      String
   coverImageUrl              String?              @map("cover_image_url")
-  visibilityMode             VisibilityMode       @default(PRIVATE) @map("visibility_mode")
   syncState                  ElectionSyncState    @map("sync_state")
   createdAt                  DateTime             @default(now()) @map("created_at")
   updatedAt                  DateTime             @updatedAt @map("updated_at")
   series                     ElectionSeries       @relation(fields: [seriesId], references: [id])
   electionKey                ElectionKey?
-  electionCandidates         ElectionCandidate[]
   onchainElection            OnchainElection?
 
   @@index([seriesId])
@@ -134,27 +133,28 @@ model OnchainElection {
   createdAt                  DateTime              @default(now()) @map("created_at")
   updatedAt                  DateTime              @updatedAt @map("updated_at")
   draft                      ElectionDraft?        @relation(fields: [draftId], references: [id])
+  series                     ElectionSeries?       @relation(fields: [onchainSeriesId], references: [onchainSeriesId])
   openVoteSubmissions        OpenVoteSubmission[]
-  voteSubmissions            VoteSubmission[]
+  privateVoteSubmissions     PrivateVoteSubmission[]
   liveTally                  LiveTally[]
   finalizedTally             FinalizedTally[]
   resultSummary              ResultSummary?
   invalidOnchainElection     InvalidOnchainElection?
 
   @@index([draftId])
+  @@index([onchainSeriesId])
   @@map("onchain_elections")
 }
 
 model OpenVoteSubmission {
   id                BigInt          @id @default(autoincrement())
-  electionRefId BigInt          @map("election_ref_id")
+  electionRefId     BigInt          @map("election_ref_id")
   onchainTxHash     String          @unique @map("onchain_tx_hash")
   voterAddress      String          @map("voter_address")
   blockNumber       Int             @map("block_number")
   blockTimestamp    DateTime        @map("block_timestamp")
   candidateKeys     Json            @map("candidate_keys")
   selectionCount    Int             @map("selection_count")
-  ballotsSpent      Int             @map("ballots_spent")
   paymentAmount     String          @map("payment_amount")
   createdAt         DateTime        @default(now()) @map("created_at")
   onchainElection   OnchainElection @relation(fields: [electionRefId], references: [id])
@@ -192,28 +192,15 @@ model ElectionKey {
   @@map("election_keys")
 }
 
-model ElectionCandidate {
-  id           BigInt   @id @default(autoincrement())
-  draftId      BigInt   @map("draft_id")
-  candidateKey String   @map("candidate_key")
-  imageUrl     String?  @map("image_url")
-  displayOrder Int      @map("display_order")
-  createdAt    DateTime @default(now()) @map("created_at")
-  draft        ElectionDraft @relation(fields: [draftId], references: [id])
-
-  @@unique([draftId, candidateKey])
-  @@index([draftId, displayOrder])
-  @@map("election_candidates")
-}
-
-model VoteSubmission {
+model PrivateVoteSubmission {
   id              BigInt           @id @default(autoincrement())
-  electionRefId BigInt         @map("election_ref_id")
+  electionRefId   BigInt           @map("election_ref_id")
   onchainTxHash   String           @unique @map("onchain_tx_hash")
   voterAddress    String           @map("voter_address")
   blockNumber     Int              @map("block_number")
   blockTimestamp  DateTime         @map("block_timestamp")
   encryptedBallot String           @map("encrypted_ballot")
+  paymentAmount   String           @map("payment_amount")
   createdAt       DateTime         @default(now()) @map("created_at")
   onchainElection OnchainElection  @relation(fields: [electionRefId], references: [id])
   decryptedBallot DecryptedBallot?
@@ -221,32 +208,32 @@ model VoteSubmission {
 
   @@index([electionRefId, blockNumber])
   @@index([voterAddress])
-  @@map("vote_submissions")
+  @@map("private_vote_submissions")
 }
 
 model DecryptedBallot {
-  id               BigInt         @id @default(autoincrement())
-  voteSubmissionId BigInt         @unique @map("vote_submission_id")
-  candidateKeys    Json           @map("candidate_keys")
-  nonce            String
-  isValid          Boolean        @map("is_valid")
-  validatedAt      DateTime?      @map("validated_at")
-  createdAt        DateTime       @default(now()) @map("created_at")
-  voteSubmission   VoteSubmission @relation(fields: [voteSubmissionId], references: [id])
+  id                      BigInt                @id @default(autoincrement())
+  privateVoteSubmissionId BigInt                @unique @map("vote_submission_id")
+  candidateKeys           Json                  @map("candidate_keys")
+  nonce                   String
+  isValid                 Boolean               @map("is_valid")
+  validatedAt             DateTime?             @map("validated_at")
+  createdAt               DateTime              @default(now()) @map("created_at")
+  privateVoteSubmission   PrivateVoteSubmission @relation(fields: [privateVoteSubmissionId], references: [id])
 
   @@index([isValid])
   @@map("decrypted_ballots")
 }
 
 model InvalidBallot {
-  id               BigInt         @id @default(autoincrement())
-  voteSubmissionId BigInt         @map("vote_submission_id")
-  reasonCode       String         @map("reason_code")
-  reasonDetail     String?        @map("reason_detail")
-  createdAt        DateTime       @default(now()) @map("created_at")
-  voteSubmission   VoteSubmission @relation(fields: [voteSubmissionId], references: [id])
+  id                      BigInt                @id @default(autoincrement())
+  privateVoteSubmissionId BigInt                @map("vote_submission_id")
+  reasonCode              String                @map("reason_code")
+  reasonDetail            String?               @map("reason_detail")
+  createdAt               DateTime              @default(now()) @map("created_at")
+  privateVoteSubmission   PrivateVoteSubmission @relation(fields: [privateVoteSubmissionId], references: [id])
 
-  @@index([voteSubmissionId])
+  @@index([privateVoteSubmissionId])
   @@index([reasonCode])
   @@map("invalid_ballots")
 }

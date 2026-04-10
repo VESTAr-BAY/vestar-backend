@@ -19,7 +19,7 @@ export class DecryptedBallotsService {
   findAll(query: { voteSubmissionId?: string; isValid?: string }) {
     return this.prisma.decryptedBallot.findMany({
       where: {
-        voteSubmissionId: toOptionalBigInt(query.voteSubmissionId),
+        privateVoteSubmissionId: toOptionalBigInt(query.voteSubmissionId),
         isValid:
           query.isValid === undefined ? undefined : query.isValid === 'true',
       },
@@ -30,14 +30,14 @@ export class DecryptedBallotsService {
   findOne(id: bigint) {
     return this.prisma.decryptedBallot.findUnique({
       where: { id },
-      include: { voteSubmission: true },
+      include: { privateVoteSubmission: true },
     });
   }
 
   create(data: CreateDecryptedBallotDto) {
     return this.prisma.decryptedBallot.create({
       data: {
-        voteSubmissionId: BigInt(data.voteSubmissionId),
+        privateVoteSubmissionId: BigInt(data.voteSubmissionId),
         candidateKeys: data.candidateKeys as never,
         nonce: data.nonce,
         isValid: data.isValid,
@@ -50,7 +50,7 @@ export class DecryptedBallotsService {
     return this.prisma.decryptedBallot.update({
       where: { id },
       data: {
-        voteSubmissionId:
+        privateVoteSubmissionId:
           data.voteSubmissionId === undefined
             ? undefined
             : BigInt(data.voteSubmissionId),
@@ -70,4 +70,3 @@ export class DecryptedBallotsService {
     });
   }
 }
-

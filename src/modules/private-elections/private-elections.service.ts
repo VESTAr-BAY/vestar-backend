@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ElectionSyncState, VisibilityMode } from '@prisma/client';
+import { ElectionSyncState } from '@prisma/client';
 import {
   createCipheriv,
   createHash,
@@ -24,41 +24,18 @@ export class PrivateElectionsService {
     const privateKeyEncrypted = this.encryptPrivateKey(privateKeyPem);
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.electionSeries.createMany({
-        data: [
-            {
-            seriesPreimage: data.seriesPreimage,
-            coverImageUrl: data.seriesCoverImageUrl ?? null,
-          },
-        ],
-        skipDuplicates: true,
+      const series = await tx.electionSeries.create({
+        data: {
+          seriesPreimage: data.seriesPreimage,
+          coverImageUrl: data.seriesCoverImageUrl ?? null,
+        },
       });
-
-      const series = await tx.electionSeries.findUnique({
-        where: { seriesPreimage: data.seriesPreimage },
-      });
-
-      if (!series) {
-        throw new Error(
-          `Failed to resolve election series for preimage: ${data.seriesPreimage}`,
-        );
-      }
-
-      if (data.seriesCoverImageUrl !== undefined) {
-        await tx.electionSeries.update({
-          where: { id: series.id },
-          data: {
-            coverImageUrl: data.seriesCoverImageUrl ?? null,
-          },
-        });
-      }
 
       const createdDraft = await tx.electionDraft.create({
         data: {
           seriesId: series.id,
           title: data.title,
           coverImageUrl: data.coverImageUrl ?? null,
-          visibilityMode: VisibilityMode.PRIVATE,
           syncState: ElectionSyncState.PREPARED,
         },
       });

@@ -342,7 +342,7 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
         continue;
       }
 
-      const createdSubmission = await this.prisma.voteSubmission.upsert({
+      const createdSubmission = await this.prisma.privateVoteSubmission.upsert({
         where: { onchainTxHash: log.transactionHash },
         create: {
           electionRefId: dbElection.id,
@@ -351,6 +351,7 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
           blockNumber: Number(log.blockNumber),
           blockTimestamp: new Date(Number(block.timestamp) * 1000),
           encryptedBallot,
+          paymentAmount: BigInt(log.args.paymentAmount ?? 0n).toString(),
         },
         update: {},
         include: {
@@ -505,7 +506,6 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
           blockTimestamp: new Date(Number(block.timestamp) * 1000),
           candidateKeys: candidateKeys as Prisma.InputJsonValue,
           selectionCount,
-          ballotsSpent: Number(log.args.ballotsSpent ?? 0n),
           paymentAmount: BigInt(log.args.paymentAmount ?? 0n).toString(),
         },
         update: {},
@@ -585,9 +585,10 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
     client: ReturnType<typeof createPublicClient>,
     latestBlock: bigint,
   ) {
-    const undecryptedSubmissionCount = await this.prisma.voteSubmission.count({
+    const undecryptedSubmissionCount =
+      await this.prisma.privateVoteSubmission.count({
       where: { decryptedBallot: null },
-    });
+      });
 
     if (undecryptedSubmissionCount === 0) {
       return;
@@ -746,7 +747,7 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.$transaction(async (tx) => {
       const existingSeriesByOnchainId = await tx.electionSeries.findUnique({
         where: { onchainSeriesId: seriesId },
-        select: { id: true, coverImageUrl: true },
+        select: { id: true },
       });
       if (draft) {
         if (
@@ -770,7 +771,6 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
               where: { id: draft.seriesId },
             });
           }
-
         } else {
           await tx.electionSeries.update({
             where: { id: draft.seriesId },
@@ -783,16 +783,13 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
               syncState: ElectionSyncState.INDEXED,
             },
           });
-
         }
-      } else {
-        await tx.electionSeries.upsert({
-          where: { onchainSeriesId: seriesId },
-          create: {
-            seriesPreimage: `[NA] ${seriesId}`,
+      } else if (!existingSeriesByOnchainId) {
+        await tx.electionSeries.create({
+          data: {
             onchainSeriesId: seriesId,
+            seriesPreimage: null,
           },
-          update: {},
         });
       }
 

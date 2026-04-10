@@ -26,26 +26,18 @@ export class FinalizedTallyService {
     const electionId = BigInt(electionIdInput);
     const onchainElection = await this.prisma.onchainElection.findUnique({
       where: { id: electionId },
-      include: {
-        draft: {
-          include: {
-            electionCandidates: {
-              orderBy: { displayOrder: 'asc' },
-            },
-          },
-        },
+      select: {
+        visibilityMode: true,
+        candidateManifestUri: true,
       },
     });
 
     const manifestCandidateKeys = await this.fetchManifestCandidateKeys(
       onchainElection?.candidateManifestUri ?? null,
     );
-    const candidates = manifestCandidateKeys.length
-      ? manifestCandidateKeys.map((candidateKey) => ({ candidateKey }))
-      : (onchainElection?.draft?.electionCandidates ?? []);
     const counts = new Map<string, number>();
-    for (const candidate of candidates) {
-      counts.set(candidate.candidateKey, 0);
+    for (const candidateKey of manifestCandidateKeys) {
+      counts.set(candidateKey, 0);
     }
 
     let totalValidVotes = 0;
@@ -73,7 +65,7 @@ export class FinalizedTallyService {
       const validBallots = await this.prisma.decryptedBallot.findMany({
         where: {
           isValid: true,
-          voteSubmission: { electionRefId: electionId },
+          privateVoteSubmission: { electionRefId: electionId },
         },
         select: { candidateKeys: true },
       });

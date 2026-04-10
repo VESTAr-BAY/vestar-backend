@@ -17,7 +17,7 @@ export class InvalidBallotsService {
   findAll(query: { voteSubmissionId?: string; reasonCode?: string }) {
     return this.prisma.invalidBallot.findMany({
       where: {
-        voteSubmissionId: toOptionalBigInt(query.voteSubmissionId),
+        privateVoteSubmissionId: toOptionalBigInt(query.voteSubmissionId),
         reasonCode: query.reasonCode,
       },
       orderBy: { id: 'desc' },
@@ -27,14 +27,14 @@ export class InvalidBallotsService {
   findOne(id: bigint) {
     return this.prisma.invalidBallot.findUnique({
       where: { id },
-      include: { voteSubmission: true },
+      include: { privateVoteSubmission: true },
     });
   }
 
   create(data: CreateInvalidBallotDto) {
     return this.prisma.invalidBallot.create({
       data: {
-        voteSubmissionId: BigInt(data.voteSubmissionId),
+        privateVoteSubmissionId: BigInt(data.voteSubmissionId),
         reasonCode: data.reasonCode,
         reasonDetail: data.reasonDetail ?? null,
       },
@@ -45,7 +45,7 @@ export class InvalidBallotsService {
     return this.prisma.invalidBallot.update({
       where: { id },
       data: {
-        voteSubmissionId:
+        privateVoteSubmissionId:
           data.voteSubmissionId === undefined
             ? undefined
             : BigInt(data.voteSubmissionId),
@@ -55,4 +55,3 @@ export class InvalidBallotsService {
     });
   }
 }
-
