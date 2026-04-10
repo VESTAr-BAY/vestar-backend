@@ -1,39 +1,50 @@
 # VESTAr Backend
 
-VESTAr 백엔드는 `PRIVATE` election prepare, on-chain indexer, `OPEN` / `PRIVATE` tally projection, state sync worker, key reveal worker를 담당한다.
+VESTAr 백엔드는 프론트엔드와 컨트랙트 사이의 오프체인 조정 계층이다. `PRIVATE` election prepare, 온체인 인덱싱, `OPEN` / `PRIVATE` tally projection, state sync worker, key reveal worker를 담당한다.
 
 ## 책임 범위
 
-- 프론트는 `createElection(config, initialCandidateHashes)`, `submitEncryptedVote(...)`, `submitOpenVote(...)`, `finalizeResults(...)`를 컨트랙트로 직접 전송한다.
-- 백엔드는 `PRIVATE` election의 `prepare` 단계에서 draft 저장, key pair 생성, 해시 계산을 수행한다.
-- 백엔드는 `ElectionCreated`, `EncryptedVoteSubmitted`, `OpenVoteSubmitted`를 polling 인덱싱한다.
-- 백엔드는 `PRIVATE` ballot만 복호화하고 검증한다.
-- `live_tally`, `finalized_tally`, `result_summaries`는 DB projection이다.
+- `vestar-frontend`는 election 생성과 투표 트랜잭션을 지갑으로 직접 서명하고 컨트랙트에 전송한다.
+- 백엔드는 `PRIVATE` election의 prepare 단계에서 draft 저장, key pair 생성, 해시 계산, 이미지 URL 메타데이터 저장을 수행한다.
+- 백엔드는 `ElectionCreated`, `EncryptedVoteSubmitted`, `OpenVoteSubmitted`, 최종 상태 변화를 polling 기반으로 인덱싱한다.
+- 백엔드는 `PRIVATE` ballot만 복호화하고 검증한다. `OPEN` ballot은 tx input과 이벤트 정합성만 검증한다.
+- `live_tally`, `finalized_tally`, `result_summaries`는 온체인 결과를 UI 친화적으로 읽기 위한 DB projection이다.
 - 시간 기반 상태 전이는 인덱서가 감지하고 `state-sync-worker`가 `syncState()` tx를 보낸다.
 - `PRIVATE` election의 key reveal은 `key-reveal-worker`가 `revealPrivateKey(bytes)` tx를 보낸다.
+- verification portal은 컨트랙트와 IPFS 데이터를 직접 읽고, 백엔드 DB를 신뢰 소스로 사용하지 않는다.
 
 ## 시스템 구성 요소
 
 ```mermaid
 flowchart TB
-  FE[frontend-demo]
-  PORTAL[verification-portal]
+  FE[vestar-frontend]
+  VP[vestar-verification-portal]
   BE[vestar-backend]
   DB[(PostgreSQL)]
+  IPFS[(IPFS / Pinata Gateway)]
   FACTORY[VESTArElectionFactory]
-  ELECTION[VESTArElection instance]
+  ELECTION[VESTArElection instances]
 
-  FE --> BE
-  FE --> FACTORY
-  FE --> ELECTION
+  FE -->|prepare / meta / tally / uploads| BE
+  FE -->|wallet tx| FACTORY
+  FE -->|wallet tx + reads| ELECTION
+  FE -->|candidate image / manifest fetch| IPFS
 
-  BE --> DB
-  BE --> FACTORY
-  BE --> ELECTION
+  BE -->|drafts / submissions / tally projections| DB
+  BE -->|event polling / contract reads| FACTORY
+  BE -->|event polling / syncState / revealPrivateKey| ELECTION
 
-  PORTAL --> FACTORY
-  PORTAL --> ELECTION
+  VP -->|contract reads| FACTORY
+  VP -->|contract reads| ELECTION
+  VP -->|manifest / receipts| IPFS
 ```
+
+아키텍처 핵심 포인트:
+
+- 생성과 투표의 최종 권위는 온체인 컨트랙트다.
+- 백엔드는 prepare, 인덱싱, projection, worker 자동화에 집중한다.
+- 프론트와 verification portal은 읽기 성격이 다르다. 프론트는 백엔드 projection을 적극 사용하지만, verification portal은 컨트랙트와 공개 데이터를 직접 검증한다.
+- 브라우저에서 백엔드로 오는 호출은 `FRONTEND_ORIGINS` 기반 CORS로 제한한다.
 
 ## 현재 데이터 모델
 
@@ -102,7 +113,7 @@ erDiagram
 
 ```mermaid
 sequenceDiagram
-  participant FE as frontend-demo
+  participant FE as vestar-frontend
   participant BE as backend
   participant DB as PostgreSQL
   participant FC as ElectionFactory
@@ -146,7 +157,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-  participant FE as frontend-demo
+  participant FE as vestar-frontend
   participant EL as ElectionInstance
   participant BE as backend
   participant DB as PostgreSQL
@@ -223,7 +234,7 @@ sequenceDiagram
   participant SS as StateSyncWorker
   participant KR as KeyRevealWorker
   participant EL as ElectionInstance
-  participant PORTAL as verification-portal
+  participant PORTAL as vestar-verification-portal
 
   IDX->>EL: simulateContract(syncState)
   EL-->>IDX: nextState = KEY_REVEAL_PENDING
@@ -375,6 +386,38 @@ flowchart TD
 - `candidateManifestHash` 계산에는 candidate `imageUrl`이 포함되지 않는다.
 - on-chain 생성 확인은 별도 confirm API가 아니라 인덱서가 수행한다.
 
+## 주요 API Surface
+
+현재 프론트와 운영 도구가 주로 참조하는 엔드포인트는 아래와 같다.
+
+- `POST /uploads/candidate-image`
+  후보 이미지 업로드. 응답의 `url`은 `${request.protocol}://${request.get('host')}/uploads/...` 형식으로 반환된다.
+- `POST /private-elections/prepare`
+  private election 생성 전 해시 계산, 키 페어 생성, draft 저장을 수행한다.
+- `GET /elections`
+  온체인 election 목록 조회. `seriesId`, `onchainElectionId`, `onchainElectionAddress`, `organizerWalletAddress`, `syncState`, `onchainState`, `visibilityMode`, `sortBy` 필터를 지원한다.
+- `GET /elections/meta`
+  프론트 화면 렌더링용 시리즈/제목/후보/이미지 메타데이터를 반환한다.
+- `GET /elections/revealed-private-key`
+  `onchainElectionId` 기준으로 공개된 private key를 조회한다.
+- `GET /live-tally`
+  실시간 tally projection 조회.
+- `GET /finalized-tally`
+  확정 tally projection 조회.
+- `GET /result-summaries`
+  결과 요약 projection 조회.
+- `GET /vote-submissions`, `GET /vote-submissions/history`, `GET /vote-submissions/by-tx-hash`
+  private submission 추적 및 운영 확인용 조회 API.
+- `GET /verified-organizers`, `GET /verified-organizers/by-wallet`, `GET /verified-organizers/request-status`
+  검증된 organizer 상태 조회 API.
+- `POST /verified-organizers/request`
+  organizer verification 요청 생성.
+
+주의:
+
+- `POST /elections`, `PATCH /elections/:id` 등 일부 엔드포인트는 내부 운영/보정용 성격이 강하다.
+- 프론트의 핵심 생성/투표/finalize 트랜잭션은 백엔드를 거치지 않고 지갑에서 컨트랙트로 직접 전송한다.
+
 ## 인덱서와 워커
 
 현재 백엔드는 polling 기반이다.
@@ -387,13 +430,28 @@ flowchart TD
 - `key-reveal-worker`의 `revealPrivateKey(bytes)` write tx
 - 마지막 처리 블록은 `indexer_cursors`에 저장
 
+## 프론트 연결 메모
+
+현재 CORS 허용 origin은 `FRONTEND_ORIGINS` 환경변수로 관리한다.
+
+- `http://localhost:5173`
+- `https://boisterous-sfogliatella-3e55f2.netlify.app`
+
+주의:
+
+- CORS는 path가 아니라 origin 기준이므로 `/vote` 경로까지 등록하지 않는다.
+- 여러 origin이 필요하면 `FRONTEND_ORIGINS=http://localhost:5173,https://your-frontend.example.com` 형식으로 쉼표 구분해서 넣는다.
+- 프론트 배포 URL이 바뀌면 `FRONTEND_ORIGINS` 값만 수정하고 백엔드를 재시작하면 된다.
+
 ## 환경변수
 
 핵심 환경변수:
 
 - `DATABASE_URL`
+- `DATABASE_URL_LOCAL`
 - `PRIVATE_KEY_ENCRYPTION_SECRET`
 - `APP_PORT`
+- `FRONTEND_ORIGINS`
 - `INDEXER_RPC_URL`
 - `INDEXER_FACTORY_ADDRESS`
 - `INDEXER_START_BLOCK`
@@ -401,6 +459,13 @@ flowchart TD
 - `INDEXER_RECONCILE_LOOKBACK_BLOCKS`
 - `STATE_SYNC_WORKER_PRIVATE_KEY`
 - `KEY_REVEAL_WORKER_PRIVATE_KEY`
+
+현재 코드 기준 메모:
+
+- DB 연결은 `DATABASE_URL` 우선, 없으면 `DATABASE_URL_LOCAL` fallback 순서로 읽는다.
+- `state-sync-worker`는 `STATE_SYNC_WORKER_PRIVATE_KEY`가 없으면 `KEY_REVEAL_WORKER_PRIVATE_KEY`를 fallback으로 사용한다.
+- `key-reveal-worker`는 `KEY_REVEAL_WORKER_PRIVATE_KEY`가 반드시 필요하다.
+- 현재 Status testnet factory 주소는 `0x4173b26b14748fe6342b2c444334095ecB7f0854` 이다.
 
 자세한 설명은 `../vestar-docs/docs_backend/ENVIRONMENT_VARIABLES.md` 참고.
 
@@ -417,6 +482,7 @@ npm run start:dev
 
 주의:
 
+- 운영 Docker 이미지는 컨테이너 시작 시 `npx prisma migrate deploy` 후 `node dist/main.js`를 실행한다.
 - 이번 스키마 기준으로 내부 FK 컬럼명이 `election_ref_id`로 바뀌었으므로, 기존 DB를 그대로 쓰는 경우 `npx prisma db push`가 실패할 수 있다.
 - 새로 시작할 경우 `npx prisma db push --force-reset` 또는 `docker compose down -v` 후 재기동이 가장 단순하다.
 
