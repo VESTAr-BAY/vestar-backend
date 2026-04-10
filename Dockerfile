@@ -18,5 +18,11 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
 COPY global-bundle.pem ./global-bundle.pem
 
+# entrypoint 추가
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
+
 EXPOSE 3000
-CMD ["npm", "run", "start"]
+
+# 기존 start 대신 entrypoint 실행
+CMD ["sh", "entrypoint.sh"]
