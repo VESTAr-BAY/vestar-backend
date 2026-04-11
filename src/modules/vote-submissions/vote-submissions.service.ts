@@ -181,7 +181,10 @@ export class VoteSubmissionsService {
     const pageSize = normalizeHistoryLimit(options?.limit);
     const cursorFilter = buildHistoryCursorFilter(options);
     const baseWhere = {
-      voterAddress: normalizedAddress,
+      voterAddress: {
+        equals: normalizedAddress,
+        mode: 'insensitive' as const,
+      },
       ...(cursorFilter ?? {}),
     };
 
