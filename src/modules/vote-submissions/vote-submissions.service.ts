@@ -2,6 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { toOptionalBigInt } from '../../common/utils/query.utils';
 import { PrismaService } from '../../prisma/prisma.service';
 
+const DEFAULT_HISTORY_PAGE_SIZE = 20;
+const MAX_HISTORY_PAGE_SIZE = 100;
+
 type CreateVoteSubmissionDto = {
   electionId: string | bigint;
   onchainTxHash: string;
@@ -19,16 +22,11 @@ type SubmissionElectionSelect = {
   onchainElectionId: true;
   onchainElectionAddress: true;
   onchainState: true;
+  candidateManifestUri: true;
+  candidateManifestHash: true;
   draft: {
     select: {
       id: true;
-      title: true;
-      series: {
-        select: {
-          id: true;
-          seriesPreimage: true;
-        };
-      };
     };
   };
 };
@@ -38,19 +36,116 @@ const submissionElectionSelect: SubmissionElectionSelect = {
   onchainElectionId: true,
   onchainElectionAddress: true,
   onchainState: true,
+  candidateManifestUri: true,
+  candidateManifestHash: true,
   draft: {
     select: {
       id: true,
-      title: true,
-      series: {
-        select: {
-          id: true,
-          seriesPreimage: true,
-        },
-      },
     },
   },
 };
+
+type HistoryCursor = {
+  cursorTimestamp: string | null;
+  cursorBlockNumber: number | null;
+  cursorId: string | null;
+};
+
+type HistorySubmissionItem = {
+  id: string;
+  type: 'PRIVATE' | 'OPEN';
+  onchainTxHash: string;
+  voterAddress: string;
+  blockNumber: number;
+  blockTimestamp: Date;
+  paymentAmount: string | null;
+  onchainElection: {
+    id: string;
+    onchainElectionId: string;
+    onchainElectionAddress: string | null;
+    onchainState: string;
+    candidateManifestUri: string | null;
+    candidateManifestHash: string | null;
+    draft: {
+      id: string;
+    } | null;
+  } | null;
+  selection: {
+    candidateKeys: string[];
+    isPending: boolean;
+    isValid: boolean | null;
+    invalidReason: {
+      reasonCode: string;
+      reasonDetail: string | null;
+    } | null;
+  };
+};
+
+function normalizeHistoryLimit(limit?: string) {
+  const parsed = Number(limit ?? DEFAULT_HISTORY_PAGE_SIZE);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_HISTORY_PAGE_SIZE;
+  }
+
+  return Math.min(Math.floor(parsed), MAX_HISTORY_PAGE_SIZE);
+}
+
+function buildHistoryCursorFilter(cursor?: {
+  cursorTimestamp?: string;
+  cursorBlockNumber?: string;
+  cursorId?: string;
+}) {
+  if (!cursor?.cursorTimestamp || !cursor?.cursorBlockNumber || !cursor?.cursorId) {
+    return undefined;
+  }
+
+  const timestamp = new Date(cursor.cursorTimestamp);
+  const blockNumber = Number(cursor.cursorBlockNumber);
+  const id = BigInt(cursor.cursorId);
+
+  if (Number.isNaN(timestamp.getTime()) || !Number.isFinite(blockNumber)) {
+    return undefined;
+  }
+
+  return {
+    OR: [
+      { blockTimestamp: { lt: timestamp } },
+      {
+        blockTimestamp: timestamp,
+        blockNumber: { lt: blockNumber },
+      },
+      {
+        blockTimestamp: timestamp,
+        blockNumber,
+        id: { lt: id },
+      },
+    ],
+  };
+}
+
+function compareHistoryItems(a: HistorySubmissionItem, b: HistorySubmissionItem) {
+  const timestampDelta = b.blockTimestamp.getTime() - a.blockTimestamp.getTime();
+
+  if (timestampDelta !== 0) {
+    return timestampDelta;
+  }
+
+  const blockDelta = b.blockNumber - a.blockNumber;
+  if (blockDelta !== 0) {
+    return blockDelta;
+  }
+
+  return Number(BigInt(b.id) - BigInt(a.id));
+}
+
+function normalizeCandidateKeys(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter(
+        (candidateKey): candidateKey is string => typeof candidateKey === 'string',
+      )
+    : [];
+}
 
 @Injectable()
 export class VoteSubmissionsService {
@@ -73,14 +168,26 @@ export class VoteSubmissionsService {
     });
   }
 
-  async findHistory(voterAddress: string) {
+  async findHistory(
+    voterAddress: string,
+    options?: {
+      limit?: string;
+      cursorTimestamp?: string;
+      cursorBlockNumber?: string;
+      cursorId?: string;
+    },
+  ) {
     const normalizedAddress = voterAddress.toLowerCase();
+    const pageSize = normalizeHistoryLimit(options?.limit);
+    const cursorFilter = buildHistoryCursorFilter(options);
+    const baseWhere = {
+      voterAddress: normalizedAddress,
+      ...(cursorFilter ?? {}),
+    };
 
     const [privateSubmissions, openSubmissions] = await Promise.all([
       this.prisma.privateVoteSubmission.findMany({
-        where: {
-          voterAddress: normalizedAddress,
-        },
+        where: baseWhere,
         include: {
           onchainElection: {
             select: submissionElectionSelect,
@@ -88,22 +195,22 @@ export class VoteSubmissionsService {
           decryptedBallot: true,
           invalidBallots: true,
         },
-        orderBy: [{ blockNumber: 'desc' }, { id: 'desc' }],
+        orderBy: [{ blockTimestamp: 'desc' }, { blockNumber: 'desc' }, { id: 'desc' }],
+        take: pageSize + 1,
       }),
       this.prisma.openVoteSubmission.findMany({
-        where: {
-          voterAddress: normalizedAddress,
-        },
+        where: baseWhere,
         include: {
           onchainElection: {
             select: submissionElectionSelect,
           },
         },
-        orderBy: [{ blockNumber: 'desc' }, { id: 'desc' }],
+        orderBy: [{ blockTimestamp: 'desc' }, { blockNumber: 'desc' }, { id: 'desc' }],
+        take: pageSize + 1,
       }),
     ]);
 
-    return [
+    const merged: HistorySubmissionItem[] = [
       ...privateSubmissions.map((submission) => ({
         id: submission.id.toString(),
         type: 'PRIVATE' as const,
@@ -119,25 +226,29 @@ export class VoteSubmissionsService {
               onchainElectionAddress:
                 submission.onchainElection.onchainElectionAddress,
               onchainState: submission.onchainElection.onchainState,
+              candidateManifestUri:
+                submission.onchainElection.candidateManifestUri,
+              candidateManifestHash:
+                submission.onchainElection.candidateManifestHash,
               draft: submission.onchainElection.draft
                 ? {
                     id: submission.onchainElection.draft.id.toString(),
-                    title: submission.onchainElection.draft.title,
-                    series: submission.onchainElection.draft.series
-                      ? {
-                          id: submission.onchainElection.draft.series.id.toString(),
-                          seriesPreimage:
-                            submission.onchainElection.draft.series.seriesPreimage,
-                        }
-                      : null,
                   }
                 : null,
             }
           : null,
         selection: {
-          candidateKeys: submission.decryptedBallot?.candidateKeys ?? [],
+          candidateKeys: normalizeCandidateKeys(
+            submission.decryptedBallot?.candidateKeys,
+          ),
           isPending: !submission.decryptedBallot,
           isValid: submission.decryptedBallot?.isValid ?? null,
+          invalidReason: submission.invalidBallots[0]
+            ? {
+                reasonCode: submission.invalidBallots[0].reasonCode,
+                reasonDetail: submission.invalidBallots[0].reasonDetail,
+              }
+            : null,
         },
       })),
       ...openSubmissions.map((submission) => ({
@@ -155,17 +266,13 @@ export class VoteSubmissionsService {
               onchainElectionAddress:
                 submission.onchainElection.onchainElectionAddress,
               onchainState: submission.onchainElection.onchainState,
+              candidateManifestUri:
+                submission.onchainElection.candidateManifestUri,
+              candidateManifestHash:
+                submission.onchainElection.candidateManifestHash,
               draft: submission.onchainElection.draft
                 ? {
                     id: submission.onchainElection.draft.id.toString(),
-                    title: submission.onchainElection.draft.title,
-                    series: submission.onchainElection.draft.series
-                      ? {
-                          id: submission.onchainElection.draft.series.id.toString(),
-                          seriesPreimage:
-                            submission.onchainElection.draft.series.seriesPreimage,
-                        }
-                      : null,
                   }
                 : null,
             }
@@ -179,18 +286,25 @@ export class VoteSubmissionsService {
             : [],
           isPending: false,
           isValid: true,
+          invalidReason: null,
         },
       })),
-    ].sort((a, b) => {
-      const timestampDelta =
-        new Date(b.blockTimestamp).getTime() - new Date(a.blockTimestamp).getTime();
+    ].sort(compareHistoryItems);
 
-      if (timestampDelta !== 0) {
-        return timestampDelta;
-      }
+    const sliced = merged.slice(0, pageSize);
+    const lastItem = sliced[sliced.length - 1];
 
-      return b.blockNumber - a.blockNumber;
-    });
+    return {
+      items: sliced,
+      nextCursor: lastItem
+        ? {
+            cursorTimestamp: lastItem.blockTimestamp.toISOString(),
+            cursorBlockNumber: lastItem.blockNumber,
+            cursorId: lastItem.id,
+          }
+        : null,
+      hasMore: merged.length > pageSize,
+    };
   }
 
   findOne(id: bigint) {
