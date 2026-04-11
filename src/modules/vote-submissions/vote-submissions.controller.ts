@@ -19,12 +19,23 @@ export class VoteSubmissionsController {
   }
 
   @Get('history')
-  findHistory(@Query('voterAddress') voterAddress?: string) {
+  findHistory(
+    @Query('voterAddress') voterAddress?: string,
+    @Query('limit') limit?: string,
+    @Query('cursorTimestamp') cursorTimestamp?: string,
+    @Query('cursorBlockNumber') cursorBlockNumber?: string,
+    @Query('cursorId') cursorId?: string,
+  ) {
     if (!voterAddress) {
-      return [];
+      return { items: [], nextCursor: null, hasMore: false };
     }
 
-    return this.voteSubmissionsService.findHistory(voterAddress);
+    return this.voteSubmissionsService.findHistory(voterAddress, {
+      limit,
+      cursorTimestamp,
+      cursorBlockNumber,
+      cursorId,
+    });
   }
 
   @Get('by-tx-hash')
