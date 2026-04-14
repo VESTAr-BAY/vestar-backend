@@ -372,8 +372,9 @@ sequenceDiagram
 
 주의:
 
-- 현재 구현은 조회 시 `voterAddress.toLowerCase()`를 사용한다.
-- 저장 경로는 checksum casing이 남을 수 있으므로 주소 casing mismatch 이슈가 생길 수 있다.
+- 현재 `history` 조회는 먼저 `voterAddress.toLowerCase()`로 입력을 정규화한 뒤, Prisma `mode: 'insensitive'` 비교로 매칭한다.
+- 즉 `GET /vote-submissions/history` 경로는 lowercase / mixed-case 주소를 모두 같은 주소로 취급한다.
+- 다만 저장 경로 자체는 별도 lowercase 정규화를 강제하지 않으므로, 다른 주소 기반 조회도 같은 정책으로 맞출지는 별도 점검이 필요하다.
 
 ## 주요 API Surface
 
