@@ -372,8 +372,9 @@ Each item currently includes:
 
 Note:
 
-- The current implementation normalizes `voterAddress` with `toLowerCase()` before lookup.
-- If stored addresses are mixed-case checksummed values, address casing mismatch can affect lookup behavior unless the query path is case-insensitive.
+- The current `history` query first normalizes the input with `voterAddress.toLowerCase()`, then matches using Prisma `mode: 'insensitive'`.
+- In practice, `GET /vote-submissions/history` treats lowercase and mixed-case addresses as the same address.
+- Storage paths still do not enforce lowercase normalization by themselves, so other address-based lookups should be reviewed separately for consistency.
 
 ## Main API Surface
 
