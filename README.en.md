@@ -415,6 +415,7 @@ Core environment variables:
 - `PRIVATE_KEY_ENCRYPTION_SECRET`
 - `INDEXER_RPC_URL`
 - `INDEXER_FACTORY_ADDRESS`
+- `ORGANIZER_REGISTRY_ADDRESS`
 - `INDEXER_START_BLOCK`
 - `INDEXER_POLL_INTERVAL_MS`
 - `INDEXER_RECONCILE_LOOKBACK_BLOCKS`
@@ -428,6 +429,7 @@ Implementation notes:
 - CORS is origin-based, not path-based, so do not include `/vote` paths in this variable.
 - `key-reveal-worker` requires `KEY_REVEAL_WORKER_PRIVATE_KEY`.
 - `state-sync-worker` falls back to `KEY_REVEAL_WORKER_PRIVATE_KEY` if `STATE_SYNC_WORKER_PRIVATE_KEY` is missing.
+- `verified-organizers` calls contract `setVerification()` on approve/reject when `ORGANIZER_REGISTRY_ADDRESS` and a signer private key are available.
 
 Example:
 
@@ -438,6 +440,7 @@ FRONTEND_ORIGINS="http://localhost:5173,https://your-frontend.example.com"
 PRIVATE_KEY_ENCRYPTION_SECRET="replace-with-a-long-random-secret"
 INDEXER_RPC_URL="https://your-rpc.example.com"
 INDEXER_FACTORY_ADDRESS="0x4173b26b14748fe6342b2c444334095ecB7f0854"
+ORGANIZER_REGISTRY_ADDRESS="0x31891950a0B5b289fFdA7478DeaE3CED0FB4c4D5"
 ```
 
 ## Running
