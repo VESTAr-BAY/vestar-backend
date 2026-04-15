@@ -415,6 +415,7 @@ sequenceDiagram
 - `PRIVATE_KEY_ENCRYPTION_SECRET`
 - `INDEXER_RPC_URL`
 - `INDEXER_FACTORY_ADDRESS`
+- `ORGANIZER_REGISTRY_ADDRESS`
 - `INDEXER_START_BLOCK`
 - `INDEXER_POLL_INTERVAL_MS`
 - `INDEXER_RECONCILE_LOOKBACK_BLOCKS`
@@ -428,6 +429,7 @@ sequenceDiagram
 - CORS는 path가 아니라 origin 기준이므로 `/vote` 경로까지 넣지 않는다.
 - `key-reveal-worker`는 `KEY_REVEAL_WORKER_PRIVATE_KEY`가 필요하다.
 - `state-sync-worker`는 `STATE_SYNC_WORKER_PRIVATE_KEY`가 없으면 `KEY_REVEAL_WORKER_PRIVATE_KEY`를 fallback으로 쓴다.
+- `verified-organizers`는 `ORGANIZER_REGISTRY_ADDRESS`와 signer private key가 있으면 approve/reject 시 컨트랙트 `setVerification()`도 호출한다.
 
 예시:
 
@@ -438,6 +440,7 @@ FRONTEND_ORIGINS="http://localhost:5173,https://your-frontend.example.com"
 PRIVATE_KEY_ENCRYPTION_SECRET="replace-with-a-long-random-secret"
 INDEXER_RPC_URL="https://your-rpc.example.com"
 INDEXER_FACTORY_ADDRESS="0x4173b26b14748fe6342b2c444334095ecB7f0854"
+ORGANIZER_REGISTRY_ADDRESS="0x31891950a0B5b289fFdA7478DeaE3CED0FB4c4D5"
 ```
 
 ## 실행
