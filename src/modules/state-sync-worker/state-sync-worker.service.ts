@@ -3,13 +3,13 @@ import { OnchainElectionState } from '@prisma/client';
 import {
   createPublicClient,
   createWalletClient,
-  defineChain,
   getAddress,
   http,
   parseAbi,
   type Address,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { createVestarChain } from '../../common/utils/vestar-chain';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const stateSyncAbi = parseAbi([
@@ -70,14 +70,7 @@ export class StateSyncWorkerService implements OnModuleInit, OnModuleDestroy {
     this.isRunning = true;
 
     try {
-      const chain = defineChain({
-        id: 1660990954,
-        name: 'vestar-state-sync-chain',
-        nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-        rpcUrls: {
-          default: { http: [rpcUrl] },
-        },
-      });
+      const chain = await createVestarChain(rpcUrl, 'vestar-state-sync-chain');
 
       const account = privateKeyToAccount(workerPrivateKey as `0x${string}`);
       const publicClient = createPublicClient({

@@ -10,7 +10,6 @@ import {
 import {
   createPublicClient,
   decodeFunctionData,
-  defineChain,
   encodeAbiParameters,
   getAddress,
   http,
@@ -19,6 +18,7 @@ import {
   type Address,
   type Hex,
 } from 'viem';
+import { createVestarChain } from '../../../common/utils/vestar-chain';
 import { PrismaService as AppPrismaService } from '../../../prisma/prisma.service';
 import { FinalizedTallyService } from '../../finalized-tally/finalized-tally.service';
 import { LiveTallyService } from '../../live-tally/live-tally.service';
@@ -140,15 +140,9 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
+      const chain = await createVestarChain(rpcUrl, 'vestar-indexer-chain');
       const client = createPublicClient({
-        chain: defineChain({
-          id: 1,
-          name: 'vestar-indexer-chain',
-          nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-          rpcUrls: {
-            default: { http: [rpcUrl] },
-          },
-        }),
+        chain,
         transport: http(rpcUrl),
       });
 
