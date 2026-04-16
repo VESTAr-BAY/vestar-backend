@@ -4,7 +4,6 @@ import { createDecipheriv, createHash } from 'node:crypto';
 import {
   createPublicClient,
   createWalletClient,
-  defineChain,
   getAddress,
   http,
   parseAbi,
@@ -12,6 +11,7 @@ import {
   type Address,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { createVestarChain } from '../../common/utils/vestar-chain';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const keyRevealAbi = parseAbi([
@@ -70,14 +70,7 @@ export class KeyRevealWorkerService implements OnModuleInit, OnModuleDestroy {
     this.isRunning = true;
 
     try {
-      const chain = defineChain({
-        id: 1660990954,
-        name: 'vestar-key-reveal-chain',
-        nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-        rpcUrls: {
-          default: { http: [rpcUrl] },
-        },
-      });
+      const chain = await createVestarChain(rpcUrl, 'vestar-key-reveal-chain');
 
       const account = privateKeyToAccount(
         revealPrivateKey as `0x${string}`,

@@ -3,19 +3,17 @@ import { VerifiedOrganizerStatus } from '@prisma/client';
 import {
   createPublicClient,
   createWalletClient,
-  defineChain,
   getAddress,
   http,
   parseAbi,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { createVestarChain } from '../../common/utils/vestar-chain';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const organizerRegistryAbi = parseAbi([
   'function setVerification(address organizer, bool verified, uint64 effectiveTime, uint64 revokedTime)',
 ]);
-
-const VESTAR_CHAIN_ID = 1660990954;
 
 type CreateVerifiedOrganizerDto = {
   walletAddress: string;
@@ -197,14 +195,10 @@ export class VerifiedOrganizersService {
       return;
     }
 
-    const chain = defineChain({
-      id: VESTAR_CHAIN_ID,
-      name: 'vestar-organizer-registry-chain',
-      nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-      rpcUrls: {
-        default: { http: [rpcUrl] },
-      },
-    });
+    const chain = await createVestarChain(
+      rpcUrl,
+      'vestar-organizer-registry-chain',
+    );
 
     const account = privateKeyToAccount(adminPrivateKey as `0x${string}`);
     const publicClient = createPublicClient({
