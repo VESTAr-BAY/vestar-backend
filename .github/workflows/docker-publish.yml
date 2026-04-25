@@ -64,7 +64,7 @@ jobs:
             APP_NAME="vestar"
             NEXT_NAME="vestar-next"
             IMAGE="ghcr.io/vestar-bay/vestar-backend:latest"
-            ENV_FILE="/home/ec2-user/vestar-backend/.env"
+            ENV_FILE="/home/ec2-user/.env"
 
             docker pull $IMAGE
 
