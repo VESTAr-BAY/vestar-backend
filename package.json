@@ -27,6 +27,9 @@
     "url": "https://github.com/VESTAr-BAY/vestar-backend/issues"
   },
   "homepage": "https://github.com/VESTAr-BAY/vestar-backend#readme",
+  "overrides": {
+    "fast-uri": "^3.1.2"
+  },
   "dependencies": {
     "@nestjs/common": "^11.1.18",
     "@nestjs/config": "^4.0.4",
