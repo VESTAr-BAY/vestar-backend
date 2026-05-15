@@ -54,6 +54,9 @@ jobs:
 
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1
+        env:
+          GHCR_USER: ${{ secrets.GHCR_USER }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
@@ -66,6 +69,7 @@ jobs:
             IMAGE="ghcr.io/vestar-bay/vestar-backend:latest"
             ENV_FILE="/home/ec2-user/.env"
 
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
             docker pull $IMAGE
 
             docker rm -f $NEXT_NAME || true
