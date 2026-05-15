@@ -12,13 +12,15 @@ import {
   decodeFunctionData,
   encodeAbiParameters,
   getAddress,
-  http,
   keccak256,
   parseAbi,
   type Address,
   type Hex,
 } from 'viem';
-import { createVestarChain } from '../../../common/utils/vestar-chain';
+import {
+  createVestarChain,
+  getIndexerTransportConfig,
+} from '../../../common/utils/vestar-chain';
 import { PrismaService as AppPrismaService } from '../../../prisma/prisma.service';
 import { FinalizedTallyService } from '../../finalized-tally/finalized-tally.service';
 import { LiveTallyService } from '../../live-tally/live-tally.service';
@@ -81,11 +83,13 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit() {
-    const rpcUrl = process.env.INDEXER_RPC_URL;
+    const transportConfig = getIndexerTransportConfig();
     const factoryAddress = process.env.INDEXER_FACTORY_ADDRESS;
 
-    if (!rpcUrl || !factoryAddress) {
-      this.logger.log('Indexer is disabled because INDEXER_RPC_URL or INDEXER_FACTORY_ADDRESS is missing');
+    if (!transportConfig || !factoryAddress) {
+      this.logger.log(
+        'Indexer is disabled because INDEXER_IPC_PATH/INDEXER_RPC_URL or INDEXER_FACTORY_ADDRESS is missing',
+      );
       return;
     }
 
@@ -126,11 +130,11 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async pollOnce() {
-    const rpcUrl = process.env.INDEXER_RPC_URL;
+    const transportConfig = getIndexerTransportConfig();
     const factoryAddress = process.env.INDEXER_FACTORY_ADDRESS;
 
     if (
-      !rpcUrl ||
+      !transportConfig ||
       !factoryAddress ||
       this.currentElectionFromBlock === null ||
       this.currentVoteFromBlock === null ||
@@ -140,10 +144,13 @@ export class ElectionIndexerService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      const chain = await createVestarChain(rpcUrl, 'vestar-indexer-chain');
+      const chain = await createVestarChain(
+        transportConfig,
+        'vestar-indexer-chain',
+      );
       const client = createPublicClient({
         chain,
-        transport: http(rpcUrl),
+        transport: transportConfig.transport,
       });
 
       const latestBlock = await client.getBlockNumber();

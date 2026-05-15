@@ -4,11 +4,13 @@ import {
   createPublicClient,
   createWalletClient,
   getAddress,
-  http,
   parseAbi,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { createVestarChain } from '../../common/utils/vestar-chain';
+import {
+  createVestarChain,
+  getIndexerTransportConfig,
+} from '../../common/utils/vestar-chain';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const organizerRegistryAbi = parseAbi([
@@ -182,33 +184,33 @@ export class VerifiedOrganizersService {
     verified: boolean,
     timestamp: Date,
   ) {
-    const rpcUrl = process.env.INDEXER_RPC_URL;
+    const transportConfig = getIndexerTransportConfig();
     const registryAddress = process.env.ORGANIZER_REGISTRY_ADDRESS;
     const adminPrivateKey =
       process.env.ORGANIZER_REGISTRY_PRIVATE_KEY ??
       process.env.KEY_REVEAL_WORKER_PRIVATE_KEY;
 
-    if (!rpcUrl || !registryAddress || !adminPrivateKey) {
+    if (!transportConfig || !registryAddress || !adminPrivateKey) {
       this.logger.warn(
-        'Organizer registry sync skipped because INDEXER_RPC_URL, ORGANIZER_REGISTRY_ADDRESS, or signer private key is missing',
+        'Organizer registry sync skipped because INDEXER_IPC_PATH/INDEXER_RPC_URL, ORGANIZER_REGISTRY_ADDRESS, or signer private key is missing',
       );
       return;
     }
 
     const chain = await createVestarChain(
-      rpcUrl,
+      transportConfig,
       'vestar-organizer-registry-chain',
     );
 
     const account = privateKeyToAccount(adminPrivateKey as `0x${string}`);
     const publicClient = createPublicClient({
       chain,
-      transport: http(rpcUrl),
+      transport: transportConfig.transport,
     });
     const client = createWalletClient({
       account,
       chain,
-      transport: http(rpcUrl),
+      transport: transportConfig.transport,
     });
 
     const txHash = await client.writeContract({

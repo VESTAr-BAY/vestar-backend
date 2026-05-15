@@ -1,4 +1,19 @@
-import { createPublicClient, defineChain, http, type Chain } from 'viem';
+import {
+  createPublicClient,
+  defineChain,
+  http,
+  webSocket,
+  type Chain,
+  type Transport,
+} from 'viem';
+import { ipc } from 'viem/node';
+
+type VestarTransportConfig = {
+  endpoint: string;
+  label: string;
+  transport: Transport;
+  transportKind: 'http' | 'ws' | 'ipc';
+};
 
 const chainIdCache = new Map<string, Promise<number>>();
 
@@ -22,42 +37,96 @@ export function getConfiguredVestarChainId() {
   return parseChainId(rawChainId);
 }
 
-export async function resolveVestarChainId(rpcUrl: string) {
+export function getIndexerTransportConfig(): VestarTransportConfig | null {
+  const ipcPath = process.env.INDEXER_IPC_PATH?.trim();
+  if (ipcPath) {
+    return {
+      endpoint: ipcPath,
+      label: `ipc:${ipcPath}`,
+      transport: ipc(ipcPath),
+      transportKind: 'ipc',
+    };
+  }
+
+  const rpcUrl = process.env.INDEXER_RPC_URL?.trim();
+  if (!rpcUrl) {
+    return null;
+  }
+
+  if (rpcUrl.startsWith('ws://') || rpcUrl.startsWith('wss://')) {
+    return {
+      endpoint: rpcUrl,
+      label: `ws:${rpcUrl}`,
+      transport: webSocket(rpcUrl),
+      transportKind: 'ws',
+    };
+  }
+
+  return {
+    endpoint: rpcUrl,
+    label: `http:${rpcUrl}`,
+    transport: http(rpcUrl),
+    transportKind: 'http',
+  };
+}
+
+export function requireIndexerTransportConfig(): VestarTransportConfig {
+  const config = getIndexerTransportConfig();
+
+  if (!config) {
+    throw new Error(
+      'Missing chain transport configuration. Set INDEXER_IPC_PATH or INDEXER_RPC_URL.',
+    );
+  }
+
+  return config;
+}
+
+export async function resolveVestarChainId(transportConfig: VestarTransportConfig) {
   const configuredChainId = getConfiguredVestarChainId();
 
   if (configuredChainId !== null) {
     return configuredChainId;
   }
 
-  let pendingChainId = chainIdCache.get(rpcUrl);
+  let pendingChainId = chainIdCache.get(transportConfig.label);
 
   if (!pendingChainId) {
     pendingChainId = createPublicClient({
-      transport: http(rpcUrl),
+      transport: transportConfig.transport,
     }).getChainId();
-    chainIdCache.set(rpcUrl, pendingChainId);
+    chainIdCache.set(transportConfig.label, pendingChainId);
   }
 
   try {
     return await pendingChainId;
   } catch (error) {
-    chainIdCache.delete(rpcUrl);
+    chainIdCache.delete(transportConfig.label);
     throw error;
   }
 }
 
 export async function createVestarChain(
-  rpcUrl: string,
+  transportConfig: VestarTransportConfig,
   name = 'vestar-chain',
 ): Promise<Chain> {
-  const chainId = await resolveVestarChainId(rpcUrl);
+  const chainId = await resolveVestarChainId(transportConfig);
 
   return defineChain({
     id: chainId,
     name,
     nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
     rpcUrls: {
-      default: { http: [rpcUrl] },
+      default: {
+        http:
+          transportConfig.transportKind === 'http'
+            ? [transportConfig.endpoint]
+            : [],
+        webSocket:
+          transportConfig.transportKind === 'ws'
+            ? [transportConfig.endpoint]
+            : undefined,
+      },
     },
   });
 }

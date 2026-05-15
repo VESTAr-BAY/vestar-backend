@@ -181,7 +181,8 @@ npm run build
 | `APP_PORT` | Backend port |
 | `FRONTEND_ORIGINS` | Allowed CORS origins |
 | `PRIVATE_KEY_ENCRYPTION_SECRET` | Secret used to protect stored private key material |
-| `INDEXER_RPC_URL` | RPC endpoint for indexing and workers |
+| `INDEXER_RPC_URL` | HTTP/WS RPC endpoint for indexing and workers when IPC is not used |
+| `INDEXER_IPC_PATH` | Local geth IPC socket path preferred over `INDEXER_RPC_URL` when set |
 | `INDEXER_FACTORY_ADDRESS` | Factory contract address to index |
 | `INDEXER_START_BLOCK` | Starting block for the indexer |
 | `INDEXER_POLL_INTERVAL_MS` | Poll interval for indexer and workers |

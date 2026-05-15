@@ -4,12 +4,14 @@ import {
   createPublicClient,
   createWalletClient,
   getAddress,
-  http,
   parseAbi,
   type Address,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { createVestarChain } from '../../common/utils/vestar-chain';
+import {
+  createVestarChain,
+  getIndexerTransportConfig,
+} from '../../common/utils/vestar-chain';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const stateSyncAbi = parseAbi([
@@ -26,14 +28,14 @@ export class StateSyncWorkerService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly prisma: PrismaService) {}
 
   onModuleInit() {
-    const rpcUrl = process.env.INDEXER_RPC_URL;
+    const transportConfig = getIndexerTransportConfig();
     const workerPrivateKey =
       process.env.STATE_SYNC_WORKER_PRIVATE_KEY ??
       process.env.KEY_REVEAL_WORKER_PRIVATE_KEY;
 
-    if (!rpcUrl || !workerPrivateKey) {
+    if (!transportConfig || !workerPrivateKey) {
       this.logger.log(
-        'State sync worker is disabled because INDEXER_RPC_URL or worker private key is missing',
+        'State sync worker is disabled because INDEXER_IPC_PATH/INDEXER_RPC_URL or worker private key is missing',
       );
       return;
     }
@@ -58,29 +60,32 @@ export class StateSyncWorkerService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const rpcUrl = process.env.INDEXER_RPC_URL;
+    const transportConfig = getIndexerTransportConfig();
     const workerPrivateKey =
       process.env.STATE_SYNC_WORKER_PRIVATE_KEY ??
       process.env.KEY_REVEAL_WORKER_PRIVATE_KEY;
 
-    if (!rpcUrl || !workerPrivateKey) {
+    if (!transportConfig || !workerPrivateKey) {
       return;
     }
 
     this.isRunning = true;
 
     try {
-      const chain = await createVestarChain(rpcUrl, 'vestar-state-sync-chain');
+      const chain = await createVestarChain(
+        transportConfig,
+        'vestar-state-sync-chain',
+      );
 
       const account = privateKeyToAccount(workerPrivateKey as `0x${string}`);
       const publicClient = createPublicClient({
         chain,
-        transport: http(rpcUrl),
+        transport: transportConfig.transport,
       });
       const walletClient = createWalletClient({
         account,
         chain,
-        transport: http(rpcUrl),
+        transport: transportConfig.transport,
       });
 
       const elections = await this.prisma.onchainElection.findMany({
